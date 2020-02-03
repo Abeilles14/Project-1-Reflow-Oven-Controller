@@ -1,45 +1,67 @@
-
-$MODLP51
-org 0000H
-    ljmp MainProgram
-    
-; Timer/Counter 0 overflow interrupt vector
-org 0x000B
-	ljmp Timer0_ISR
-    
 $NOLIST
-$include(math32.inc)
-$include(LCD_4bit.inc)
+$MODLP51
 $LIST
 
-
-; DECLARATIONS
-
-CLK  EQU 22118400
-BAUD equ 115200
-BRG_VAL equ (0x100-(CLK/(16*BAUD)))
-
-; interrupt
-
+; INTERRUPTS
 TIMER0_RELOAD_L DATA 0xf2
 TIMER1_RELOAD_L DATA 0xf3
 TIMER0_RELOAD_H DATA 0xf4
 TIMER1_RELOAD_H DATA 0xf5
 
+;DECLARATIONS
+CLK           EQU 22118400 ; Microcontroller system crystal frequency in Hz
 TIMER0_RATE   EQU 4096     ; 2048Hz squarewave (peak amplitude of CEM-1203 speaker)
 TIMER0_RELOAD EQU ((65536-(CLK/TIMER0_RATE)))
+TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
+TIMER2_RELOAD EQU ((65536-(CLK/TIMER2_RATE)))
+BAUD equ 115200
+BRG_VAL equ (0x100-(CLK/(16*BAUD)))
 
-;; PIN IN/OUTS
+; PINS INPUT OUTPUTS
 CE_ADC EQU P2.0
 MY_MOSI EQU P2.1
 MY_MISO EQU P2.2
 MY_SCLK EQU P2.3
 
+BOOT equ P4.5
 SOUND_OUT equ P3.7
-CHANGE_MODE equ P0.1	; 0 IF CELCIUS, 1 IF KELVIN
+
+START equ P0.0
+INCDEC equ P0.1
+HOUR_BUTTON   equ P0.2
+ALMIN_BUTTON  equ P0.3
+ALSEC_BUTTON   equ P0.4
+
+; Reset vector
+org 0x0000
+    ljmp MainProgram
+    
+; External interrupt 0 vector (not used in this code)
+org 0x0003
+	reti
+
+; Timer/Counter 0 overflow interrupt vector
+org 0x000B
+	ljmp Timer0_ISR
+
+; External interrupt 1 vector (not used in this code)
+org 0x0013
+	reti
+
+; Timer/Counter 1 overflow interrupt vector (not used in this code)
+org 0x001B
+	reti
+
+; Serial port receive/transmit interrupt vector (not used in this code)
+org 0x0023 
+	reti
+	
+; Timer/Counter 2 overflow interrupt vector
+org 0x002B
+	ljmp Timer2_ISR
 
 ; These register definitions needed by 'math32.inc'
-DSEG at 30H
+DSEG at 0x30
 x:   ds 4
 y:   ds 4
 bcd: ds 5
@@ -48,12 +70,15 @@ bcd: ds 5
 SaveT: ds 4
 currentTemp: ds 1
 SoakTemp: ds 1
-ReflTemp: 1
+ReflTemp: ds 1
 ; TIMER COUNTERS
-SoakMin: ds 1
-SoakSec: ds 1
-ReflMin: ds 1
-ReflSec: ds 1
+Count1ms: ds 2 		; Used to determine when (1) second has passed
+BCD_soakMin: ds 1 ;delete?
+BCD_soakSec: ds 1 ;delete?
+BCD_reflMin: ds 1 ;delete?
+BCD_reflSec: ds 1 ;delete?
+BCD_counterSec: ds 1
+BCD_counterMin: ds 1
 ; ALARMS
 SoakMinAlarm: ds 1
 SoakSecAlarm: ds 1
@@ -68,6 +93,7 @@ TEMP_LoTemp: ds 1
 
 BSEG
 mf: dbit 1
+half_seconds_flag: dbit 1		; Set to one in the ISR every time 1000 ms had passed (actually 1 second flag)
 
 CSEG
 ; These 'equ' must match the wiring between the microcontroller and the LCD!
@@ -88,16 +114,18 @@ _Temperature_LCD: DB 'Temp:',0
 _C:	DB 'C',0
 _blank: DB ' ',0
 _default: DB '00:00',0
-
 _Warning: DB '!', 0
 
-; INIT SPI
+$NOLIST
+$include(math32.inc)
+$include(LCD_4bit.inc)
+$LIST
 
+; INIT SPI
 INIT_SPI:
  	setb MY_MISO ; Make MISO an input pin
  	clr MY_SCLK ; For mode (0,0) SCLK is zero
  	ret
-
 DO_SPI_G:
  	push acc
  	mov R1, #0 ; Received byte stored in R1
@@ -132,22 +160,11 @@ InitSerialPort:
 	mov	BRL,#BRG_VAL
 	mov	BDRCON,#0x1E ; BDRCON=BRR|TBCK|RBCK|SPD;
     ret
-
-;;; Char Stuff ;;;
-; Send a character using the serial port
-putchar:
-    jnb TI, putchar
-    clr TI
-    mov SBUF, a
-    ret
-    
-; Get character using serial port
-getchar:
-	jnb RI, getchar
-	clr RI
-	mov a, SBUF
-	ret
 	
+EX1_ISR:
+   clr TR2
+   reti
+
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
 ; for timer 0                     ;
@@ -175,6 +192,75 @@ Timer0_ISR:
 	;clr TF0  ; According to the data sheet this is done for us already.
 	cpl SOUND_OUT ; Connect speaker to P3.7!
 	reti
+
+
+;---------------------------------;
+; Routine to initialize the ISR   ;
+; for timer 2                     ;
+;---------------------------------;
+Timer2_Init:
+	mov T2CON, #0 ; Stop timer/counter.  Autoreload mode.
+	mov TH2, #high(TIMER2_RELOAD)
+	mov TL2, #low(TIMER2_RELOAD)
+	; Set the reload value
+	mov RCAP2H, #high(TIMER2_RELOAD)
+	mov RCAP2L, #low(TIMER2_RELOAD)
+	; Init One millisecond interrupt counter.  It is a 16-bit variable made with two 8-bit parts
+	clr a
+	mov Count1ms+0, a
+	mov Count1ms+1, a
+	; Enable the timer and interrupts
+    setb ET2  ; Enable timer 2 interrupt
+    setb TR2  ; Enable timer 2
+	ret
+
+;---------------------------------;
+; ISR for timer 2                 ;
+;---------------------------------;
+Timer2_ISR:
+	clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in ISR
+	cpl P3.6 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+	
+	; The two registers used in the ISR must be saved in the stack
+	push acc
+	push psw
+	
+	; Increment the 16-bit one mili second counter
+	inc Count1ms+0    ; Increment the low 8-bits first
+	mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
+	jnz Inc_Done
+	inc Count1ms+1  
+    
+    Inc_Done:
+	; Check if half second has passed
+	mov a, Count1ms+0
+	cjne a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
+	mov a, Count1ms+1
+	cjne a, #high(1000), Timer2_ISR_done
+	
+	; 500 milliseconds have passed.  Set a flag so the main program knows
+	setb half_seconds_flag ; Let the main program know half second had passed
+	cpl TR0 ; Enable/disable timer/counter 0. This line creates a beep-silence-beep-silence sound.
+	; Reset to zero the milli-seconds counter, it is a 16-bit variable
+	clr a
+	mov Count1ms+0, a
+	mov Count1ms+1, a
+	; Increment the BCD counter
+	mov a, BCD_counterSec
+    jnb INCDEC, Timer2_ISR_decrement
+	add a, #0x01
+	sjmp Timer2_ISR_da
+Timer2_ISR_decrement:
+	add a, #0x99 ; Adding the 10-complement of -1 is like subtracting 1.
+Timer2_ISR_da:
+	da a ; Decimal adjust instruction.  Check datasheet for more details!
+	mov BCD_counterSec, a
+	
+Timer2_ISR_done:
+	pop psw
+	pop acc
+	reti
+    
     
 ; send a string until 0
 ;SendString:
@@ -201,26 +287,26 @@ wait1: djnz R0, wait1 		; 3 cycles->3*45.21123ns*166=22.51519us
     
 
 ; Alarm Function
-TempAlarm:
-	lcall bcd2hex
-	load_y(35)
-	lcall x_gteq_y
+;TempAlarm:
+;	lcall bcd2hex
+;	load_y(35)
+;	lcall x_gteq_y
 	
 	; mf = 1 if x>=y, 0 if x<y
-	jb mf, AlarmOn
+;	jb mf, AlarmOn
 	
 	; set timer 0 to 0
-	clr TR0
-	lcall hex2bcd
-	lcall ClearWarning
-	ret
+;	clr TR0
+;	lcall hex2bcd
+;	lcall ClearWarning
+;	ret
 	
-AlarmOn:
+;AlarmOn:
 	; enable timer0
-	setb TR0
-	lcall hex2bcd
-	lcall WriteWarning
-	ret
+;	setb TR0
+;	lcall hex2bcd
+;	lcall WriteWarning
+;	ret
 
 ; TODELETE	
 WriteWarning:
@@ -269,6 +355,11 @@ ClearWarning:
 MainProgram:
     mov SP, #7FH
     lcall LCD_4BIT
+    
+    ; enable global interrupts
+    lcall Timer0_Init
+    lcall Timer2_Init
+    
     ;set constant strings lcd
     Set_Cursor(1,1)
 	Send_Constant_String(#_Soak)
@@ -291,15 +382,24 @@ MainProgram:
 	lcall INIT_SPI
 	lcall InitSerialPort
 
-	mov HiTemp, #0x0
-	mov LoTemp, #0x99
-	
-	; enable global interrupts
-	lcall Timer0_Init
+	mov HiTemp, #0x0	;TODELETE?
+	mov LoTemp, #0x99	;TODELETE?
+
 	setb EA
+	setb half_seconds_flag
 	
+	; Set counters
+	mov BCD_counterSec, #0x00
+	mov BCD_counterMin, #0x00
+	mov a, BCD_counterSec 		; number to be displayed placed in accumulator
+	Set_Cursor(1, 11)     ; the place in the LCD where we want the BCD counter value
+	Display_BCD(BCD_counterMin); 
+		Set_Cursor(2, 11)     ; the place in the LCD where we want the BCD counter value
+	Display_BCD(BCD_counterSec);
+
 ; forever loop interface with putty
 Forever:
+	; TEMPERATURE CHECK
 	cpl P3.7
 	clr CE_ADC
 	mov R0, #00000001B 		; start at bit 1
@@ -317,12 +417,66 @@ Forever:
 	mov SaveT, R1 		; R1 bits 0 to 7, save result low.
 	setb CE_ADC
 	lcall WaitHalfSec
-	
 	; Convert SPI reading into readable temperatures
 	lcall GetTemp
+	
+	; TIME CHECK
+	jb BOOT, checktime  ; if the 'BOOT' button is not pressed skip
+	Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
+	jb BOOT, checktime  ; if the 'BOOT' button is not pressed skip
+	jnb BOOT, $		; Wait for button release.  The '$' means: jump to same instruction.
+
+	clr TR2                 ; Stop timer 2
+	clr a
+	mov Count1ms+0, a
+	mov Count1ms+1, a
+	mov BCD_counterSec, a
+	mov a, BCD_counterMin
+	add a, #0x01
+	da a
+	mov BCD_counterMin, a
+	setb TR2                ; Start timer 2
+	setb ET0
+	
+	ljmp writenum 
 
 	; Do this forever
 	sjmp Forever
+	
+checktime:
+    jb INCDEC, loop_a ; if 'HOUR' button is not pressed, skip
+    Wait_Milli_seconds(#50)
+    jb INCDEC, loop_a
+    jnb INCDEC, $
+    clr TR2                 ; Stop timer 2
+	clr a
+	mov Count1ms+0, a
+	mov Count1ms+1, a
+	; add to alarm_countermin(hours)
+loop_a:
+	jnb half_seconds_flag, forever ;check if 1 second has passed...
+loop_b:
+    clr half_seconds_flag ; We clear this flag in the main loop, but it is set in the ISR for timer 2
+    mov a, BCD_counterSec ;check to see if counter is at 60
+    cjne a, #0b01100000, writenum  ;jump if not number 61
+    mov a, #0b00000000 ;reset to number 0
+    mov BCD_counterSec, a
+    mov a, BCD_counterMin ;add to minute counter
+    add a, #0x01
+    da a
+    mov BCD_counterMin, a
+bigBCDmincheck:   
+    cjne a, #0b01100000, writenum ;first compare if BCD_counter2 = 60, if so, clear counter
+    clr a
+    mov BCD_counterMin, a
+writenum:
+    Set_Cursor(1, 11)     ; the place in the LCD where we want the BCD counter value
+	Display_BCD(BCD_counterMin); 
+	Set_Cursor(1, 14)     ; the place in the LCD where we want the BCD counter value
+	Display_BCD(BCD_counterSec); 
+    ljmp forever
+    
+    
 	
 GetTemp:
 	mov x, SaveT
@@ -344,7 +498,7 @@ GetTemp:
 	mov currentTemp, bcd
 
 	; Check temperature and sound alarm if ...
-	lcall TempAlarm
+;	lcall TempAlarm
 	
 SendCelcius:
 	; convert back to celcius, since bcd is in kelvin
