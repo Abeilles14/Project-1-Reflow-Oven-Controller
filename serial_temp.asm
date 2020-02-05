@@ -309,19 +309,19 @@ wait1: djnz R0, wait1 		; 3 cycles->3*45.21123ns*166=22.51519us
 ;	ret
 
 ; TODELETE	
-WriteWarning:
-	Set_Cursor(1,16)
-	Send_Constant_String(#_Warning)
-	Set_Cursor(2,16)
-	Send_Constant_String(#_Warning)
-	ret
+;WriteWarning:
+;	Set_Cursor(1,16)
+;	Send_Constant_String(#_Warning)
+;	Set_Cursor(2,16)
+;	Send_Constant_String(#_Warning)
+;	ret
 	
-ClearWarning:
-	Set_Cursor(1,16)
-	Send_Constant_String(#_blank)
-	Set_Cursor(2,16)
-	Send_Constant_String(#_blank)
-	ret
+;ClearWarning:
+;	Set_Cursor(1,16)
+;	Send_Constant_String(#_blank)
+;	Set_Cursor(2,16)
+;	Send_Constant_String(#_blank)
+;	ret
 	
 
 ;NEW HI LO W/ a	
