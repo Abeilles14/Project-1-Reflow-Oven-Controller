@@ -27,12 +27,12 @@ BOOT_BUTTON equ P4.5
 SOUND_OUT equ P3.7
 
 START equ P0.1				; Start Reflow process
-STOP equ P0.3				; Stop Reflow process immediately, reset.
-MODE_BUTTON equ P4.5		; Switch between Clock, Current Temp, and Soak/Refl Displays
+STOP equ P2.7				; Stop Reflow process immediately, reset.
+;MODE_BUTTON equ P4.5		; Switch between Clock, Current Temp, and Soak/Refl Displays
 
-TEMP_BUTTON  equ P0.7		; Inc temperature
-ALMIN_BUTTON  equ P4.5		; Inc minutes
-ALSEC_BUTTON   equ P2.4		; Inc seconds
+TEMP_BUTTON  equ P0.0		; Inc temperature
+ALMIN_BUTTON  equ P0.3		; Inc minutes
+ALSEC_BUTTON   equ P0.6		; Inc seconds
 
 ; Reset vector
 org 0x0000
@@ -358,10 +358,14 @@ wait1: djnz R0, wait1 		; 3 cycles->3*45.21123ns*166=22.51519us
 MainProgram:
     mov SP, #7FH
     lcall LCD_4BIT
-    
+
     ; enable global interrupts
     lcall Timer0_Init
     lcall Timer2_Init
+    
+    ; In case you decide to use the pins of P0 configure the port in bidirectional mode:
+    mov P0M0, #0
+    mov P0M1, #0
    	
     mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
@@ -423,7 +427,8 @@ Setup:
 	add a, #0x01
 	da a
 	mov SoakTemp, a
-	lcall Display_Soak  
+	clr a
+	lcall Display_Soak
 	sjmp Setup	;loops in Setup until Start button pressed
 
 SetSoakMin:
@@ -432,11 +437,12 @@ SetSoakMin:
     jb ALMIN_BUTTON, SetSoakSec
     jnb ALMIN_BUTTON, $
     
-	; Now increment Soak temp
+	; Now increment Soak min
 	mov a, BCD_counterMin
 	add a, #0x01
 	da a
 	mov BCD_counterMin, a
+	clr a
 	lcall Display_Soak
 	ljmp Setup
 	
@@ -446,25 +452,12 @@ SetSoakSec:
     jb ALSEC_BUTTON, Setup
     jnb ALSEC_BUTTON, $
     
-	; Now increment Soak temp
+	; Now increment Soak sec
 	mov a, BCD_counterSec
 	add a, #0x01
 	da a
 	mov BCD_counterSec, a
-	lcall Display_Soak
-	ljmp Setup
-	
-SetReflTemp:
-	jb ALSEC_BUTTON, StartTimer
-    Wait_Milli_seconds(#50)
-    jb ALSEC_BUTTON, StartTimer
-    jnb ALSEC_BUTTON, $
-    
-	; Now increment Soak temp
-	mov a, BCD_counterSec
-	add a, #0x01
-	da a
-	mov BCD_counterSec, a
+	clr a
 	lcall Display_Soak
 	ljmp Setup
 	
@@ -479,7 +472,6 @@ StartTimer:			; pressed to exit settings and start timer
 ;----------------------------;
 ;	 TEMP AND TIME CHECK     ;
 ;----------------------------;
-
 
 ; forever loop interface with putty
 Forever:
