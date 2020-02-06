@@ -26,13 +26,12 @@ MY_SCLK EQU P2.3
 BOOT_BUTTON equ P4.5
 SOUND_OUT equ P3.7
 
-START equ P0.1				; Start Reflow process
-STOP equ P2.7				; Stop Reflow process immediately, reset.
-;MODE_BUTTON equ P4.5		; Switch between Clock, Current Temp, and Soak/Refl Displays
-
 TEMP_BUTTON  equ P0.0		; Inc temperature
 ALMIN_BUTTON  equ P0.3		; Inc minutes
 ALSEC_BUTTON   equ P0.6		; Inc seconds
+
+STARTSTOP_BUTTON equ P2.7	; Start/Stop process immediately, Settings
+MODE_BUTTON equ P2.4				; Switch Displays between Clock, Current Temp, Settings/timer
 
 ; Reset vector
 org 0x0000
@@ -75,10 +74,6 @@ SoakTemp: ds 1
 ReflTemp: ds 1
 ; TIMER COUNTERS
 Count1ms: ds 2 		; Used to determine when (1) second has passed
-;BCD_soakMin: ds 1 ;delete?
-;BCD_soakSec: ds 1 ;delete?
-;BCD_reflMin: ds 1 ;delete?
-;BCD_reflSec: ds 1 ;delete?
 BCD_counterSec: ds 1
 BCD_counterMin: ds 1
 ; ALARMS
@@ -114,7 +109,7 @@ _New_Line: DB '\r\n', 0
 _Soak: DB 'Soak:',0
 _Refl: DB 'Refl:',0
 _Temperature_LCD: DB 'Temp:',0	
-_C:	DB 'C',0
+_C:	DB '000C',0
 _blank: DB ' ',0
 _default: DB '00:00',0
 _Warning: DB '!', 0
@@ -248,10 +243,11 @@ Timer2_ISR:
 	clr a
 	mov Count1ms+0, a
 	mov Count1ms+1, a
-	; Increment the BCD counter
+	; Decrement the BCD counter
 	mov a, BCD_counterSec
-    jnb ALSEC_BUTTON, Timer2_ISR_decrement
-	add a, #0x01
+	sjmp Timer2_ISR_decrement		; jump to decrement counter
+;    jnb ALSEC_BUTTON, Timer2_ISR_decrement
+;	add a, #0x01
 	sjmp Timer2_ISR_da
 Timer2_ISR_decrement:
 	add a, #0x99 ; Adding the 10-complement of -1 is like subtracting 1.
@@ -276,17 +272,6 @@ Timer2_ISR_done:
     
 ;SendStringDone:
 ;    ret
-    
-    
-; Delay Function
-WaitHalfSec:
-       mov R2, #89
-wait3: mov R1, #250
-wait2: mov R0, #166
-wait1: djnz R0, wait1 		; 3 cycles->3*45.21123ns*166=22.51519us
-    djnz R1, wait2 			; 22.51519us*250=5.629ms
-    djnz R2, wait3 			; 5.629ms*89=0.5s (approximately)
-    ret
     
 
 ; Alarm Function
@@ -358,13 +343,13 @@ wait1: djnz R0, wait1 		; 3 cycles->3*45.21123ns*166=22.51519us
 MainProgram:
     mov SP, #7FH
     lcall LCD_4BIT
-
+    
     ; enable global interrupts
     lcall Timer0_Init
     lcall Timer2_Init
     
     ; In case you decide to use the pins of P0 configure the port in bidirectional mode:
-    mov P0M0, #0
+    mov P0M0, #0	;ESSENTIAL!! BUTTONS WILL GO NUTS
     mov P0M1, #0
    	
     mov SoakTemp, #0x00
@@ -379,7 +364,7 @@ MainProgram:
     ;set constant strings lcd
     Set_Cursor(1,1)
 	Send_Constant_String(#_Soak)
-	Set_Cursor(1,9)
+	Set_Cursor(1,6)
 	Send_Constant_String(#_C)
 	Set_Cursor(1,10)
 	Send_Constant_String(#_blank)
@@ -388,7 +373,7 @@ MainProgram:
 	
 	Set_Cursor(2,1)
 	Send_Constant_String(#_Refl)
-	Set_Cursor(2,9)
+	Set_Cursor(2,6)
 	Send_Constant_String(#_C)
 	Set_Cursor(2,10)
 	Send_Constant_String(#_blank)
@@ -411,26 +396,50 @@ MainProgram:
 	Display_BCD(BCD_counterMin); 
 	Set_Cursor(2, 11)     ; the place in the LCD where we want the BCD counter value
 	Display_BCD(BCD_counterSec);
-	ljmp Setup			; *See in macros, sets up all soak temp, time, refl temp, time before counter start
+	ljmp SetupSoak			; sets up all soak temp, time, refl temp, time before counter start
 
 ;-----------------------------;
 ;	SET SOAK/REFL SETTINGS	  ;
 ;-----------------------------;
-Setup:
+;--------- SETUP SOAK ---------;
+SetupSoak:
+	jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
+	Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
+	jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
+	jnb BOOT_BUTTON, $
+	
+	;Make LCD screen blink??
+	
+	clr a
+	mov SoakTemp, a
+	mov SoakMinAlarm, a
+	mov SoakSecAlarm, a
+	lcall Display_Soak
+		
+	ljmp SetupSoak	;loops in Setup until Start button pressed
+
+CheckReflSet:			; if startmode button pressed, set refl
+	jb STARTSTOP_BUTTON, SetupSoak
+    Wait_Milli_seconds(#50)
+    jb STARTSTOP_BUTTON, SetupSoak
+    jnb STARTSTOP_BUTTON, $
+    ljmp SetupRefl
+    	
+SetSoakTemp:
 	jb TEMP_BUTTON, SetSoakMin ; if 'soak min' button is not pressed, check soak sec
     Wait_Milli_seconds(#50)
     jb TEMP_BUTTON, SetSoakMin
     jnb TEMP_BUTTON, $
-    
-	; increment Soak temp
+    ; increment Soak temp
 	mov a, SoakTemp
 	add a, #0x01
 	da a
 	mov SoakTemp, a
 	clr a
 	lcall Display_Soak
-	sjmp Setup	;loops in Setup until Start button pressed
-
+	;lcall Display_Refl
+	ljmp SetupSoak
+	
 SetSoakMin:
 	jb ALMIN_BUTTON, SetSoakSec
     Wait_Milli_seconds(#50)
@@ -438,50 +447,148 @@ SetSoakMin:
     jnb ALMIN_BUTTON, $
     
 	; Now increment Soak min
-	mov a, BCD_counterMin
-	add a, #0x01
+	mov a, SoakMinAlarm
+	cjne a, #0x59, incrementSM		;if not equal to 59, add 1
+	mov a, #0x00
 	da a
-	mov BCD_counterMin, a
+	mov SoakMinAlarm, a
 	clr a
 	lcall Display_Soak
-	ljmp Setup
+	ljmp SetupSoak	
+incrementSM:
+	add a, #0x01
+	da a
+	mov SoakMinAlarm, a
+	clr a
+	lcall Display_Soak
+	ljmp SetupSoak
 	
 SetSoakSec:
-	jb ALSEC_BUTTON, Setup
+	jb ALSEC_BUTTON, CheckReflSet
     Wait_Milli_seconds(#50)
-    jb ALSEC_BUTTON, Setup
+    jb ALSEC_BUTTON, CheckReflSet
     jnb ALSEC_BUTTON, $
     
 	; Now increment Soak sec
-	mov a, BCD_counterSec
-	add a, #0x01
+	mov a, SoakSecAlarm
+	cjne a, #0x59, incrementSS		;if not equal to 59, add 1
+	mov a, #0x00
 	da a
-	mov BCD_counterSec, a
+	mov SoakSecAlarm, a
 	clr a
 	lcall Display_Soak
-	ljmp Setup
+	ljmp SetupSoak
+incrementSS:
+	add a, #0x01
+	da a
+	mov SoakSecAlarm, a
+	clr a
+	lcall Display_Soak
+	ljmp SetupSoak
+    
+;--------- SETUP REFLOW	--------;
+SetupRefl:
+	jb BOOT_BUTTON, SetReflTemp  ; if the 'BOOT' button is not pressed skip
+	Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
+	jb BOOT_BUTTON, SetReflTemp  ; if the 'BOOT' button is not pressed skip
+	jnb BOOT_BUTTON, $
 	
-StartTimer:			; pressed to exit settings and start timer
-	setb half_seconds_flag
+	;Make LCD screen blink??
+	
+	clr a
+	mov ReflTemp, a
+	mov ReflMinAlarm, a
+	mov ReflSecAlarm, a
+	lcall Display_Refl	
+	
+	ljmp SetupRefl	;loops in Setup until Start button pressed
+	
+CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
+	jb STARTSTOP_BUTTON, SetupRefl
+    Wait_Milli_seconds(#50)
+    jb STARTSTOP_BUTTON, SetupRefl
+    jnb STARTSTOP_BUTTON, $
+
+	setb half_seconds_flag		; pressed to exit settings and start timer
 	setb TR2
 	setb ET0
+	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
+	mov BCD_counterSec, SoakSecAlarm
 	ljmp Forever
- 
-
-
+	
+SetReflTemp:
+	jb TEMP_BUTTON, SetReflMin ; if 'soak min' button is not pressed, check soak sec
+    Wait_Milli_seconds(#50)
+    jb TEMP_BUTTON, SetReflMin
+    jnb TEMP_BUTTON, $
+    ; increment Soak temp
+	mov a, ReflTemp
+	add a, #0x01
+	da a
+	mov ReflTemp, a
+	clr a
+	lcall Display_Refl
+	ljmp SetupRefl
+	
+SetReflMin:
+	jb ALMIN_BUTTON, SetReflSec
+    Wait_Milli_seconds(#50)
+    jb ALMIN_BUTTON, SetReflSec
+    jnb ALMIN_BUTTON, $
+    
+	; Now increment Soak min
+	mov a, ReflMinAlarm
+	cjne a, #0x59, incrementRM		;if not equal to 59, add 1
+	mov a, #0x00
+	da a
+	mov ReflMinAlarm, a
+	clr a
+	lcall Display_Refl
+	ljmp SetupRefl
+incrementRM:
+	add a, #0x01
+	da a
+	mov ReflMinAlarm, a
+	clr a
+	lcall Display_Refl
+	ljmp SetupRefl
+	
+SetReflSec:
+	jb ALSEC_BUTTON, CheckStartTimer
+    Wait_Milli_seconds(#50)
+    jb ALSEC_BUTTON, CheckStartTimer
+    jnb ALSEC_BUTTON, $
+    
+	; Now increment Soak sec
+	mov a, ReflSecAlarm
+	cjne a, #0x59, incrementRS		;if not equal to 59, add 1
+	mov a, #0x00
+	da a
+	mov ReflSecAlarm, a
+	clr a
+	lcall Display_Refl
+	ljmp SetupRefl
+incrementRS:
+	add a, #0x01
+	da a
+	mov ReflSecAlarm, a
+	clr a
+	lcall Display_Refl
+	ljmp SetupRefl
+   
 ;----------------------------;
-;	 TEMP AND TIME CHECK     ;
+;		 MAIN LOOP   		 ;
 ;----------------------------;
 
 ; forever loop interface with putty
 Forever:
 	; TEMPERATURE CHECK
-	lcall checktemp
+	;lcall checktemp			;to display current temp later
 	
 	; TIME CHECK
-	jb BOOT_BUTTON, checktime  ; boot resets display
+	jb BOOT_BUTTON, checkstop  ; buttons to change screen to Clock and Current Temp later
 	Wait_Milli_Seconds(#50)
-	jb BOOT_BUTTON, checktime 
+	jb BOOT_BUTTON, checkstop
 	jnb BOOT_BUTTON, $
 
 	clr TR2                 ; Stop timer 2
@@ -489,19 +596,15 @@ Forever:
 	mov Count1ms+0, a
 	mov Count1ms+1, a
 	mov BCD_counterSec, a
-	mov a, BCD_counterMin
-	add a, #0x01
-	da a
 	mov BCD_counterMin, a
 	setb TR2                ; Start timer 2
-	setb ET0
 	
 	ljmp writenum 
 
 	; Do this forever
 	sjmp Forever
 
-checktemp:
+checktemp:			; check temperature CH0
 	cpl P3.7
 	clr CE_ADC
 	mov R0, #00000001B 		; start at bit 1
@@ -523,18 +626,24 @@ checktemp:
 	lcall GetTemp
 	ret
 	
-checktime:
-    jb STOP, loop_a ; if 'HOUR' button is not pressed, skip
+checkstop:
+    jb STARTSTOP_BUTTON, loop_a
     Wait_Milli_seconds(#50)
-    jb STOP, loop_a
-    jnb STOP, $
-    ;clr TR2                 ; Stop timer 2
-	;clr a
-;	mov Count1ms+0, a
-;	mov Count1ms+1, a
-	; add to alarm_countermin(hours)
+    jb STARTSTOP_BUTTON, loop_a
+    jnb STARTSTOP_BUTTON, $
+    clr TR2                 ; Stop timer 2
+	clr a
+	mov Count1ms+0, a
+	mov Count1ms+1, a
+	mov BCD_counterSec, a
+	
+	ljmp SetupSoak		; if stop button pressed, go back to setup
+	; blink LCD?
+	;ljmp loop_a
+	
 loop_a:
 	jnb half_seconds_flag, forever ;check if 1 second has passed...
+	ljmp loop_b
 loop_b:
     clr half_seconds_flag ; We clear this flag in the main loop, but it is set in the ISR for timer 2
     mov a, BCD_counterSec ;check to see if counter is at 60

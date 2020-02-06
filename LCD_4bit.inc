@@ -37,6 +37,19 @@ L1: djnz R0, L1 ; 3 cycles->3*45.21123ns*166=22.51519us
     pop AR1
     pop AR0
     ret
+
+;---------------------------------;
+; 	  Wait HalfSecond         ;
+;---------------------------------;
+
+WaitHalfSec:
+    mov R2, #89
+L6: mov R1, #250
+L5: mov R0, #166
+L4: djnz R0, L6 ; 3 cycles->3*45.21123ns*166=22.51519us
+    djnz R1, L5 ; 22.51519us*250=5.629ms
+    djnz R2, L4 ; 5.629ms*89=0.5s (approximately)
+    ret
 	
 ;---------------------------------;
 ; Toggles the 'E' pin in the LCD  ;
@@ -196,23 +209,22 @@ endmac
 ;------------------------------------;
 
 Display_Soak:
-	Set_Cursor(1, 8)
+	Set_Cursor(1, 7)
 	Display_BCD(SoakTemp)
 	Set_Cursor(1, 11)
-	Display_BCD(BCD_counterMin)
+	Display_BCD(SoakMinAlarm)
 	Set_Cursor(1, 14)
-	Display_BCD(BCD_counterSec)
+	Display_BCD(SoakSecAlarm)
 	ret
 
 Display_Refl:
-	Set_Cursor(2, 8)
+	Set_Cursor(2, 7)
 	Display_BCD(ReflTemp)
 	Set_Cursor(2, 11)
-	Display_BCD(BCD_counterMin)
-	Set_Cursor(1, 14)
-	Display_BCD(BCD_counterSec)
+	Display_BCD(ReflMinAlarm)
+	Set_Cursor(2, 14)
+	Display_BCD(ReflSecAlarm)
 	ret
-
 ;------------------------------------;
 ;	       Buttons               ;
 ;------------------------------------;
