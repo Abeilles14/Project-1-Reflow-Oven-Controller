@@ -1,7 +1,16 @@
 # Specifies intentionally untracked files to ignore when using Git
 # http://git-scm.com/docs/gitignore
 
-# ignore all .hex and .lst files
+*~
+*.sw[mnpcod]
+*.log
+*.tmp
+*.tmp.*
+
 *.hex
 *.lst
 *.bat
+
+.DS_Store
+Thumbs.db
+UserInterfaceState.xcuserstate
