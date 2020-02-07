@@ -69,30 +69,24 @@ bcd: ds 5
 
 ; TEMPERATURE
 SaveT: ds 4
-currentTemp: ds 1
-SoakTemp: ds 1
-ReflTemp: ds 1
-; TIMER COUNTERS
+currentTemp: ds 1	; current temperature from sensor
+SoakTemp: ds 1		; set soak temperature
+ReflTemp: ds 1		; set refl temperature
+; TIMER COUNTERS	; contains counters and timers
 Count1ms: ds 2 		; Used to determine when (1) second has passed
 BCD_counterSec: ds 1
 BCD_counterMin: ds 1
 ; ALARMS
-SoakMinAlarm: ds 1
+SoakMinAlarm: ds 1		;contains set time values
 SoakSecAlarm: ds 1
 ReflMinAlarm: ds 1
 ReflSecAlarm: ds 1
 
-;TODOLETE?
-HiTemp: ds 1
-LoTemp: ds 1
-TEMP_HiTemp: ds 1
-TEMP_LoTemp: ds 1
-
 BSEG
 mf: dbit 1
-half_seconds_flag: dbit 1		; Set to 1 in the ISR every time 1000 ms had passed (actually 1 second flag)
-start_counter: dbit 1			; Set to 1 once ready to start countdown
-
+half_seconds_flag: dbit 1	; Set to 1 in the ISR every time 1000 ms had passed (actually 1 second flag)
+start_counter: dbit 1		; Set to 1 once ready to start countdown
+refltimer_done: dbit 1		; Set to 1 once refl timer starts
 CSEG
 ; These 'equ' must match the wiring between the microcontroller and the LCD!
 LCD_RS equ P1.1
@@ -309,33 +303,7 @@ Timer2_ISR_done:
 ;	Send_Constant_String(#_blank)
 ;	Set_Cursor(2,16)
 ;	Send_Constant_String(#_blank)
-;	ret
-	
-
-;NEW HI LO W/ a	
-;HiLo:
-;    clr c
-;    mov a, currentTemp
-;    subb a, HiTemp
-;    jc keepoldhitemp
-;    mov HiTemp, currentTemp
-    
-;keepoldhitemp:
-;    clr c
-;    mov a, currentTemp
-;    subb a, LoTemp
-;    jnc keepoldlotemp
-;    mov LoTemp, currentTemp
-    
-;keepoldlotemp:
-
-;	Set_Cursor(1,13)
-;	Display_BCD(HiTemp)
-;	Set_Cursor(2,13)
-;	Display_BCD(LoTemp)
-;	ret
-	
-			
+;	ret	
     
 ;----------------------;
 ;    MAIN PROGRAM      ;
@@ -383,9 +351,6 @@ MainProgram:
 	lcall INIT_SPI
 	lcall InitSerialPort
 
-	;mov HiTemp, #0x0	;TODELETE?
-	;mov LoTemp, #0x99	;TODELETE?
-
 	setb EA		;counter not running originally
 	
 	; Set counters
@@ -410,7 +375,7 @@ SetupSoak:
 	
 	;Make LCD screen blink??
 	
-	clr a
+	clr a					; clear all settings
 	mov SoakTemp, a
 	mov SoakMinAlarm, a
 	mov SoakSecAlarm, a
@@ -502,18 +467,21 @@ SetupRefl:
 	lcall Display_Refl	
 	
 	ljmp SetupRefl	;loops in Setup until Start button pressed
-	
+		
 CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	jb STARTSTOP_BUTTON, SetupRefl
     Wait_Milli_seconds(#50)
     jb STARTSTOP_BUTTON, SetupRefl
     jnb STARTSTOP_BUTTON, $
-
+    
 	setb half_seconds_flag		; pressed to exit settings and start timer
 	setb TR2
-	setb ET0
+	
 	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
 	mov BCD_counterSec, SoakSecAlarm
+	
+	clr refltimer_done; clear timer done flags
+	
 	ljmp Forever
 	
 SetReflTemp:
@@ -586,9 +554,9 @@ Forever:
 	;lcall checktemp			;to display current temp later
 	
 	; TIME CHECK
-	jb BOOT_BUTTON, checkstop  ; buttons to change screen to Clock and Current Temp later
+	jb BOOT_BUTTON, CheckStop  ; buttons to change screen to Clock and Current Temp later
 	Wait_Milli_Seconds(#50)
-	jb BOOT_BUTTON, checkstop
+	jb BOOT_BUTTON, CheckStop
 	jnb BOOT_BUTTON, $
 
 	clr TR2                 ; Stop timer 2
@@ -599,12 +567,12 @@ Forever:
 	mov BCD_counterMin, a
 	setb TR2                ; Start timer 2
 	
-	ljmp writenum 
+	ljmp WriteNum 
 
 	; Do this forever
 	sjmp Forever
 
-checktemp:			; check temperature CH0
+CheckTemp:			; check temperature CH0
 	cpl P3.7
 	clr CE_ADC
 	mov R0, #00000001B 		; start at bit 1
@@ -625,46 +593,80 @@ checktemp:			; check temperature CH0
 	; Convert SPI reading into readable temperatures
 	lcall GetTemp
 	ret
-	
-checkstop:
-    jb STARTSTOP_BUTTON, loop_a
+;;;;;;;;;;;;;;;;;;;;;;;;; DEBUG!!!	
+CheckStop:
+    jb STARTSTOP_BUTTON, loop_a		; if stop button not pressed, go loop and check for 00
     Wait_Milli_seconds(#50)
     jb STARTSTOP_BUTTON, loop_a
     jnb STARTSTOP_BUTTON, $
+    
     clr TR2                 ; Stop timer 2
 	clr a
 	mov Count1ms+0, a
 	mov Count1ms+1, a
 	mov BCD_counterSec, a
-	
+		
 	ljmp SetupSoak		; if stop button pressed, go back to setup
-	; blink LCD?
-	;ljmp loop_a
 	
 loop_a:
-	jnb half_seconds_flag, forever ;check if 1 second has passed...
-	ljmp loop_b
+	jnb half_seconds_flag, Forever ;check if 1 second has passed...
 loop_b:
     clr half_seconds_flag ; We clear this flag in the main loop, but it is set in the ISR for timer 2
-    mov a, BCD_counterSec ;check to see if counter is at 60
-    cjne a, #0b01100000, writenum  ;jump if not number 61
-    mov a, #0b00000000 ;reset to number 0
+    mov a, BCD_counterSec
+    cjne a, #0x99, WriteNum  ;check to see if sec counter is at 00, skip if not 00
+   
+    mov a, #0x59 			; if sec at 00, reset to number 59
     mov BCD_counterSec, a
-    mov a, BCD_counterMin ;add to minute counter
-    add a, #0x01
+    
+    clr a
+    mov a, BCD_counterMin
+    cjne a, #0x00, decrementMin	; check if minutes at 00, if so then stop, else decrement minutes
+TimerDone:		; if timer done
+	jnb refltimer_done, StartReflTimer		; if reflow timer not done, start reflow timer
+	;else if refltimer done, finish process
+	clr TR2                 ; Stop timer 2
+	clr a	
+	ljmp SetupSoak		; go back to settings
+	
+StartReflTimer:
+	setb refltimer_done			; set to indicate final stage in process
+	mov BCD_counterMin, ReflMinAlarm
+	mov BCD_counterSec, ReflSecAlarm
+	ljmp Forever
+	
+decrementMin:
+    add a, #0x99 	;decrement minute counter
     da a
     mov BCD_counterMin, a
+    clr a
 bigBCDmincheck:   
-    cjne a, #0b01100000, writenum ;first compare if BCD_counter2 = 60, if so, clear counter
+    cjne a, #0x00, WriteNum ;first compare if BCD_counter2 = 00, if so, clear counter
     clr a
     mov BCD_counterMin, a
-writenum:
-    Set_Cursor(1, 11)     ; the place in the LCD where we want the BCD counter value
-	Display_BCD(BCD_counterMin); 
-	Set_Cursor(1, 14)     ; the place in the LCD where we want the BCD counter value
-	Display_BCD(BCD_counterSec); 
-    ljmp forever
+WriteNum:
+	;check refltimer_done if update soak or refl time
+	jnb refltimer_done, Display_SoakTimer	; if in soak stage, update soak display
+	jb refltimer_done, Display_ReflTimer		; if in refl stage, update refl display
+    ; jumps to Forever after display
     
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; END DEBUG
+
+Display_SoakTimer:
+	Set_Cursor(1, 11)
+	Display_BCD(BCD_counterMin)
+	Set_Cursor(1, 14)
+	Display_BCD(BCD_counterSec)
+	ljmp Forever
+
+Display_ReflTimer:
+	Set_Cursor(2, 11)
+	Display_BCD(BCD_counterMin)
+	Set_Cursor(2, 14)
+	Display_BCD(BCD_counterSec)
+	ljmp Forever
+
+
 GetTemp:
 	mov x, SaveT
 	mov x+1, SaveT+1
