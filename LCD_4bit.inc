@@ -231,39 +231,62 @@ Display_Refl:
 ;------------------------------------;
 ;--------- show current temperature ----------;
 TempDisplay:
+	setb tempdisplay_flag
+	
+	Set_Cursor(1,1)
+	Send_Constant_String(#_clearLCD)
+	Set_Cursor(1,2)
+	Send_Constant_String(#_clearLCD)
+
+	Set_Cursor(1,1)
+	Send_Constant_String(#_Temperature_LCD)
+	Set_Cursor(1,6)
+	Display_BCD(currentTemp)
+	
+	ljmp loop_a
 
 
 ;--------- show current soak/refl process ---------;
 TimerDisplay:
+	clr tempdisplay_flag
+
+	Set_Cursor(1,1)
+	Send_Constant_String(#_clearLCD)
+	Set_Cursor(1,2)
+	Send_Constant_String(#_clearLCD)
+
+    	Set_Cursor(1,1)
+	Send_Constant_String(#_Soak)
+	Set_Cursor(1,6)
+	Send_Constant_String(#_C)
+	Set_Cursor(1,10)
+	Send_Constant_String(#_blank)
+	Set_Cursor(1,11)
+	Send_Constant_String(#_default)
+	
+	Set_Cursor(2,1)
+	Send_Constant_String(#_Refl)
+	Set_Cursor(2,6)
+	Send_Constant_String(#_C)
+	Set_Cursor(2,10)
+	Send_Constant_String(#_blank)
+	Set_Cursor(2,11)
+	Send_Constant_String(#_default)
+
+	lcall Display_Soak
+	lcall Display_Refl
+	
+	ljmp loop_a
+
 
 ;----------------------------------------;
 ;   	Checking Equal or greater	 ;
 ;----------------------------------------;
 ;------------- Soak Temp ----------------;
-Compare_SoakTemp_GE mac
-	mov a, %0		; compare current temp with SoakTemp
-	lcall ?Compare_GE mac
-endmac
 
-?Compare_SoakTemp_GE:
-	clr c
-	cjne a, SoakTemp, NOT_EQ	; current temp and soak temp
-EQL:				; proceed
-	sjmp END_CMP
-
-NOT_EQ:			;if not equal, check if less
-	jc A_LESS
-
-A_GREATER:		; proceed
-	sjmp END_CMP
-
-A_LESS:		; loop
-	ret
-
-END_CMP:	;Finished
-	ljmp Forever
 	
 ;------------- Refl Temp ----------------;
+
 
 ;------------------------------------;
 ;   	Temperature Stuff	     ;

@@ -69,9 +69,9 @@ bcd: ds 5
 
 ; TEMPERATURE
 SaveT: ds 4
-currentTemp: ds 1	; current temperature from sensor
-SoakTemp: ds 1		; set soak temperature
-ReflTemp: ds 1		; set refl temperature
+currentTemp: ds 2	; current temperature from sensor
+SoakTemp: ds 2		; set soak temperature
+ReflTemp: ds 2		; set refl temperature
 ; TIMER COUNTERS	; contains counters and timers
 Count1ms: ds 2 		; Used to determine when (1) second has passed
 BCD_counterSec: ds 1
@@ -110,7 +110,7 @@ _Temperature_LCD: DB 'Temp:',0
 _C:	DB '000C',0
 _blank: DB ' ',0
 _default: DB '00:00',0
-_Warning: DB '!', 0
+_clearLCD: DB '                '
 
 $NOLIST
 $include(math32.inc)
@@ -306,6 +306,7 @@ MainProgram:
 	lcall InitSerialPort
 
 	setb EA		;counter not running originally
+	clr tempdisplay_flag
 	
 	; Set counters
 	mov BCD_counterSec, #0x00
@@ -510,8 +511,8 @@ State1_RampSoak:
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
-	mov a, currentTemp
 	clr c
+	mov a, currentTemp
 	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
 ; compare if greater or equal, proceed
 EQL_soak:
@@ -527,18 +528,16 @@ A_LESS_soak:
 	; Implement safety feature (if Temp < 50C in first 60s, abort) ;
 	;--------------------------------------------------------------;
  
-;----------------------------;
-;   	SOAK AND REFLOW   	 ;
-;----------------------------;
+;------------------------------------;
+;   	STATE2&4 SOAK AND REFLOW   	 ;
+;------------------------------------;
 ; forever loop interface with putty
 Forever:
 	
 	;------------------------- TODO ----------------------------;
 	; Check Temperature
 	;-----------------------------------------------------------;
-	; TEMPERATURE CHECK
-	; lcall CheckTemp			;to display current temp later
-	
+
 	; TIME CHECK
 	jb BOOT_BUTTON, CheckStop  ; buttons to change screen to Clock and Current Temp later
 	Wait_Milli_Seconds(#50)
@@ -557,29 +556,8 @@ Forever:
 
 	; Do this forever
 	sjmp Forever
-
-;CheckTemp:			; check temperature CH0
-;	cpl P3.7
-;	clr CE_ADC
-;	mov R0, #00000001B 		; start at bit 1
-;	lcall DO_SPI_G
 	
-;	mov R0, #10000000B 		; read channel 0
-;	lcall DO_SPI_G
-;	mov a, R1 				; R1 contains bits 8 and 9
-;	anl a, #00000011B 		; We need only the two least significant bits (AND)
-	
-	;mov SaveT+1, a 		; Save result high.
-	
-;	mov R0, #55H 		; Don't care
-;	lcall DO_SPI_G
-	;mov SaveT, R1 		; R1 bits 0 to 7, save result low.
-;	setb CE_ADC
-;	lcall WaitHalfSec
-	; Convert SPI reading into readable temperatures
-;	lcall GetTemp
-;	ret
-	
+	;switch displays instead of loop_a
 CheckStop:
     jb STARTSTOP_BUTTON, loop_a		; if stop button not pressed, go loop and check for 00
     Wait_Milli_seconds(#50)
@@ -597,6 +575,17 @@ CheckStop:
 	; Voice feed back Turn off oven
 	;-----------------------------------------------------------;	
 	ljmp State0_SetupSoak		; if stop button pressed, go back to setup
+	
+;SwitchDisplays:
+;	jb MODE_BUTTON, loop_a		; if stop button not pressed, go loop and check for 00
+;    Wait_Milli_seconds(#50)
+;    jb MODE_BUTTON, loop_a
+;    jnb MODE_BUTTON, $
+	
+;	jb tempdisplay_flag, TimerDisplay
+;	jnb tempdisplay_flag, TempDisplay
+
+	ljmp loop_a
 	
 loop_a:
 	jnb half_seconds_flag, Forever ;check if 1 second has passed...
@@ -642,8 +631,8 @@ State3_RampRefl:
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
-	mov a, currentTemp
 	clr c
+	mov a, currentTemp
 	cjne a, ReflTemp, NOT_EQL_refl	; check if equal to set soak temp, if so, proceed to next state
 
 	; compare if greater or equal, proceed
@@ -707,8 +696,8 @@ State5_Cool:
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
-	mov a, currentTemp
 	clr c
+	mov a, currentTemp
 	cjne a, #60 , NOT_EQL_cool	; check if equal to set soak temp, if so, proceed to next state
 
 	; compare if greater or equal, proceed
