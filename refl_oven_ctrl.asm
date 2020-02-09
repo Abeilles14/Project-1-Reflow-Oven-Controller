@@ -76,6 +76,8 @@ ReflTemp: ds 1		; set refl temperature
 Count1ms: ds 2 		; Used to determine when (1) second has passed
 BCD_counterSec: ds 1
 BCD_counterMin: ds 1
+BCD_runtimeSec: ds 1
+BCD_runtimeMin: ds 1
 ; ALARMS
 SoakMinAlarm: ds 1		;contains set time values
 SoakSecAlarm: ds 1
@@ -87,6 +89,8 @@ mf: dbit 1
 half_seconds_flag: dbit 1	; Set to 1 in the ISR every time 1000 ms had passed (actually 1 second flag)
 start_counter: dbit 1		; Set to 1 once ready to start countdown
 refltimer_done: dbit 1		; Set to 1 once refl timer starts
+tempdisplay_flag: dbit 1	; Set to 1 for temp and run time display
+
 CSEG
 ; These 'equ' must match the wiring between the microcontroller and the LCD!
 LCD_RS equ P1.1
@@ -111,6 +115,7 @@ _Warning: DB '!', 0
 $NOLIST
 $include(math32.inc)
 $include(LCD_4bit.inc)
+;$include (reflproc_FSM.asm)
 $LIST
 
 ; INIT SPI
@@ -240,7 +245,7 @@ Timer2_ISR:
 	; Decrement the BCD counter
 	mov a, BCD_counterSec
 	sjmp Timer2_ISR_decrement		; jump to decrement counter
-;    jnb ALSEC_BUTTON, Timer2_ISR_decrement
+;   jnb ALSEC_BUTTON, Timer2_ISR_decrement
 ;	add a, #0x01
 	sjmp Timer2_ISR_da
 Timer2_ISR_decrement:
@@ -253,57 +258,6 @@ Timer2_ISR_done:
 	pop psw
 	pop acc
 	reti
-    
-    
-; send a string until 0
-;SendString:
-;    clr A
-;    movc A, @A+DPTR
-;    jz SendStringDone
-;    lcall putchar
-;    inc DPTR
-;    sjmp SendString
-    
-;SendStringDone:
-;    ret
-    
-
-; Alarm Function
-;TempAlarm:
-;	lcall bcd2hex
-;	load_y(35)
-;	lcall x_gteq_y
-	
-	; mf = 1 if x>=y, 0 if x<y
-;	jb mf, AlarmOn
-	
-	; set timer 0 to 0
-;	clr TR0
-;	lcall hex2bcd
-;	lcall ClearWarning
-;	ret
-	
-;AlarmOn:
-	; enable timer0
-;	setb TR0
-;	lcall hex2bcd
-;	lcall WriteWarning
-;	ret
-
-; TODELETE	
-;WriteWarning:
-;	Set_Cursor(1,16)
-;	Send_Constant_String(#_Warning)
-;	Set_Cursor(2,16)
-;	Send_Constant_String(#_Warning)
-;	ret
-	
-;ClearWarning:
-;	Set_Cursor(1,16)
-;	Send_Constant_String(#_blank)
-;	Set_Cursor(2,16)
-;	Send_Constant_String(#_blank)
-;	ret	
     
 ;----------------------;
 ;    MAIN PROGRAM      ;
@@ -361,13 +315,13 @@ MainProgram:
 	Display_BCD(BCD_counterMin); 
 	Set_Cursor(2, 11)     ; the place in the LCD where we want the BCD counter value
 	Display_BCD(BCD_counterSec);
-	ljmp SetupSoak			; sets up all soak temp, time, refl temp, time before counter start
+	ljmp State0_SetupSoak			; sets up all soak temp, time, refl temp, time before counter start
 
 ;-----------------------------;
 ;	SET SOAK/REFL SETTINGS	  ;
 ;-----------------------------;
 ;--------- SETUP SOAK ---------;
-SetupSoak:
+State0_SetupSoak:
 	jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
 	Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
 	jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
@@ -381,14 +335,14 @@ SetupSoak:
 	mov SoakSecAlarm, a
 	lcall Display_Soak
 		
-	ljmp SetupSoak	;loops in Setup until Start button pressed
+	ljmp State0_SetupSoak	;loops in Setup until Start button pressed
 
 CheckReflSet:			; if startmode button pressed, set refl
-	jb STARTSTOP_BUTTON, SetupSoak
+	jb STARTSTOP_BUTTON, State0_SetupSoak
     Wait_Milli_seconds(#50)
-    jb STARTSTOP_BUTTON, SetupSoak
+    jb STARTSTOP_BUTTON, State0_SetupSoak
     jnb STARTSTOP_BUTTON, $
-    ljmp SetupRefl
+    ljmp State0_SetupRefl
     	
 SetSoakTemp:
 	jb TEMP_BUTTON, SetSoakMin ; if 'soak min' button is not pressed, check soak sec
@@ -403,7 +357,7 @@ SetSoakTemp:
 	clr a
 	lcall Display_Soak
 	;lcall Display_Refl
-	ljmp SetupSoak
+	ljmp State0_SetupSoak
 	
 SetSoakMin:
 	jb ALMIN_BUTTON, SetSoakSec
@@ -419,14 +373,14 @@ SetSoakMin:
 	mov SoakMinAlarm, a
 	clr a
 	lcall Display_Soak
-	ljmp SetupSoak	
+	ljmp State0_SetupSoak	
 incrementSM:
 	add a, #0x01
 	da a
 	mov SoakMinAlarm, a
 	clr a
 	lcall Display_Soak
-	ljmp SetupSoak
+	ljmp State0_SetupSoak
 	
 SetSoakSec:
 	jb ALSEC_BUTTON, CheckReflSet
@@ -442,17 +396,17 @@ SetSoakSec:
 	mov SoakSecAlarm, a
 	clr a
 	lcall Display_Soak
-	ljmp SetupSoak
+	ljmp State0_SetupSoak
 incrementSS:
 	add a, #0x01
 	da a
 	mov SoakSecAlarm, a
 	clr a
 	lcall Display_Soak
-	ljmp SetupSoak
+	ljmp State0_SetupSoak
     
 ;--------- SETUP REFLOW	--------;
-SetupRefl:
+State0_SetupRefl:
 	jb BOOT_BUTTON, SetReflTemp  ; if the 'BOOT' button is not pressed skip
 	Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
 	jb BOOT_BUTTON, SetReflTemp  ; if the 'BOOT' button is not pressed skip
@@ -466,12 +420,12 @@ SetupRefl:
 	mov ReflSecAlarm, a
 	lcall Display_Refl	
 	
-	ljmp SetupRefl	;loops in Setup until Start button pressed
+	ljmp State0_SetupRefl	;loops in Setup until Start button pressed
 		
 CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
-	jb STARTSTOP_BUTTON, SetupRefl
+	jb STARTSTOP_BUTTON, State0_SetupRefl
     Wait_Milli_seconds(#50)
-    jb STARTSTOP_BUTTON, SetupRefl
+    jb STARTSTOP_BUTTON, State0_SetupRefl
     jnb STARTSTOP_BUTTON, $
     
 	setb half_seconds_flag		; pressed to exit settings and start timer
@@ -480,7 +434,12 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
 	mov BCD_counterSec, SoakSecAlarm
 	
-	clr refltimer_done; clear timer done flags
+	clr refltimer_done; clear timer done flags to indicate Soak stage
+	
+	;------------------------- TODO ----------------------------;
+	; Voice Feedback Soak stage
+	; Set oven to Soak heat
+	;-----------------------------------------------------------;
 	
 	ljmp Forever
 	
@@ -496,7 +455,7 @@ SetReflTemp:
 	mov ReflTemp, a
 	clr a
 	lcall Display_Refl
-	ljmp SetupRefl
+	ljmp State0_SetupRefl
 	
 SetReflMin:
 	jb ALMIN_BUTTON, SetReflSec
@@ -512,14 +471,14 @@ SetReflMin:
 	mov ReflMinAlarm, a
 	clr a
 	lcall Display_Refl
-	ljmp SetupRefl
+	ljmp State0_SetupRefl
 incrementRM:
 	add a, #0x01
 	da a
 	mov ReflMinAlarm, a
 	clr a
 	lcall Display_Refl
-	ljmp SetupRefl
+	ljmp State0_SetupRefl
 	
 SetReflSec:
 	jb ALSEC_BUTTON, CheckStartTimer
@@ -535,23 +494,50 @@ SetReflSec:
 	mov ReflSecAlarm, a
 	clr a
 	lcall Display_Refl
-	ljmp SetupRefl
+	ljmp State0_SetupRefl
 incrementRS:
 	add a, #0x01
 	da a
 	mov ReflSecAlarm, a
 	clr a
 	lcall Display_Refl
-	ljmp SetupRefl
+	ljmp State0_SetupRefl
    
-;----------------------------;
-;		 MAIN LOOP   		 ;
-;----------------------------;
+;--------------------------------;
+;		STATE1 RAMP SOAK 	     ;
+;--------------------------------;  
+State1_RampSoak:
+	;------------------------- TODO ----------------------------;
+	; Check current temperature
+	;-----------------------------------------------------------;
+	mov a, currentTemp
+	clr c
+	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
+; compare if greater or equal, proceed
+EQL_soak:
+	ljmp Forever
+NOT_EQL_soak:
+	jc A_LESS_soak
+A_GREATER_soak:
+	ljmp Forever
+A_LESS_soak:
+	ljmp State1_RampSoak
 
+	;------------------------- TODO -------------------------------;
+	; Implement safety feature (if Temp < 50C in first 60s, abort) ;
+	;--------------------------------------------------------------;
+ 
+;----------------------------;
+;   	SOAK AND REFLOW   	 ;
+;----------------------------;
 ; forever loop interface with putty
 Forever:
+	
+	;------------------------- TODO ----------------------------;
+	; Check Temperature
+	;-----------------------------------------------------------;
 	; TEMPERATURE CHECK
-	;lcall checktemp			;to display current temp later
+	; lcall CheckTemp			;to display current temp later
 	
 	; TIME CHECK
 	jb BOOT_BUTTON, CheckStop  ; buttons to change screen to Clock and Current Temp later
@@ -572,28 +558,28 @@ Forever:
 	; Do this forever
 	sjmp Forever
 
-CheckTemp:			; check temperature CH0
-	cpl P3.7
-	clr CE_ADC
-	mov R0, #00000001B 		; start at bit 1
-	lcall DO_SPI_G
+;CheckTemp:			; check temperature CH0
+;	cpl P3.7
+;	clr CE_ADC
+;	mov R0, #00000001B 		; start at bit 1
+;	lcall DO_SPI_G
 	
-	mov R0, #10000000B 		; read channel 0
-	lcall DO_SPI_G
-	mov a, R1 				; R1 contains bits 8 and 9
-	anl a, #00000011B 		; We need only the two least significant bits (AND)
+;	mov R0, #10000000B 		; read channel 0
+;	lcall DO_SPI_G
+;	mov a, R1 				; R1 contains bits 8 and 9
+;	anl a, #00000011B 		; We need only the two least significant bits (AND)
 	
 	;mov SaveT+1, a 		; Save result high.
 	
-	mov R0, #55H 		; Don't care
-	lcall DO_SPI_G
+;	mov R0, #55H 		; Don't care
+;	lcall DO_SPI_G
 	;mov SaveT, R1 		; R1 bits 0 to 7, save result low.
-	setb CE_ADC
-	lcall WaitHalfSec
+;	setb CE_ADC
+;	lcall WaitHalfSec
 	; Convert SPI reading into readable temperatures
-	lcall GetTemp
-	ret
-;;;;;;;;;;;;;;;;;;;;;;;;; DEBUG!!!	
+;	lcall GetTemp
+;	ret
+	
 CheckStop:
     jb STARTSTOP_BUTTON, loop_a		; if stop button not pressed, go loop and check for 00
     Wait_Milli_seconds(#50)
@@ -605,8 +591,12 @@ CheckStop:
 	mov Count1ms+0, a
 	mov Count1ms+1, a
 	mov BCD_counterSec, a
-		
-	ljmp SetupSoak		; if stop button pressed, go back to setup
+	
+	;------------------------- TODO ----------------------------;
+	; Turn off oven
+	; Voice feed back Turn off oven
+	;-----------------------------------------------------------;	
+	ljmp State0_SetupSoak		; if stop button pressed, go back to setup
 	
 loop_a:
 	jnb half_seconds_flag, Forever ;check if 1 second has passed...
@@ -625,13 +615,60 @@ TimerDone:		; if timer done
 	jnb refltimer_done, StartReflTimer		; if reflow timer not done, start reflow timer
 	;else if refltimer done, finish process
 	clr TR2                 ; Stop timer 2
-	clr a	
-	ljmp SetupSoak		; go back to settings
+	clr a
+	; reset all settings
+	mov SoakTemp, #0x00
+   	mov ReflTemp, #0x00
+	mov BCD_counterSec, #0x00
+	mov BCD_counterMin, #0x00
+	mov SoakMinAlarm, #0x00
+	mov SoakSecAlarm, #0x00
+	mov ReflMinAlarm, #0x00
+	mov ReflSecAlarm, #0x00
 	
+	lcall Display_Soak
+	lcall Display_Refl
+	
+	;------------------------- TODO ----------------------------;
+	; Turn off oven temp
+	; Voice feedback Reflow process over
+	;-----------------------------------------------------------;
+	ljmp State0_SetupSoak		; go back to settings
+
+;--------------------------------;
+;		STATE3 RAMP REFL 	     ;
+;--------------------------------; 
+State3_RampRefl:
+	;------------------------- TODO ----------------------------;
+	; Check current temperature
+	;-----------------------------------------------------------;
+	mov a, currentTemp
+	clr c
+	cjne a, ReflTemp, NOT_EQL_refl	; check if equal to set soak temp, if so, proceed to next state
+
+	; compare if greater or equal, proceed
+EQL_refl:
+	ljmp StartReflTimer
+NOT_EQL_refl:
+	jc A_LESS_refl
+A_GREATER_refl:
+	ljmp StartReflTimer
+A_LESS_refl:
+	ljmp State3_RampRefl
+	
+;---------------------------;
+;		STATE4 REFL 	    ;
+;---------------------------; 
 StartReflTimer:
 	setb refltimer_done			; set to indicate final stage in process
 	mov BCD_counterMin, ReflMinAlarm
 	mov BCD_counterSec, ReflSecAlarm
+	
+	;------------------------- TODO --------------------------------------;
+	; Change oven temperature to Reflow
+	; Voice feedback Soak stage over, start Reflow
+	;---------------------------------------------------------------------;
+	
 	ljmp Forever
 	
 decrementMin:
@@ -648,9 +685,6 @@ WriteNum:
 	jnb refltimer_done, Display_SoakTimer	; if in soak stage, update soak display
 	jb refltimer_done, Display_ReflTimer		; if in refl stage, update refl display
     ; jumps to Forever after display
-    
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; END DEBUG
 
 Display_SoakTimer:
 	Set_Cursor(1, 11)
@@ -665,66 +699,39 @@ Display_ReflTimer:
 	Set_Cursor(2, 14)
 	Display_BCD(BCD_counterSec)
 	ljmp Forever
-
-
-GetTemp:
-	mov x, SaveT
-	mov x+1, SaveT+1
-	mov x+2, #0
-	mov x+3, #0
 	
-	; celcius
-	load_y(410)
-	lcall mul32
-	load_y(1023)
-	lcall div32
-	load_y(273)
-	lcall sub32
+;---------------------------;
+;		STATE5 COOLING 	    ;
+;---------------------------; 
+State5_Cool:
+	;------------------------- TODO ----------------------------;
+	; Check current temperature
+	;-----------------------------------------------------------;
+	mov a, currentTemp
+	clr c
+	cjne a, #60 , NOT_EQL_cool	; check if equal to set soak temp, if so, proceed to next state
 
-	lcall hex2bcd
-	lcall Display_TempC
+	; compare if greater or equal, proceed
+EQL_cool:
+	ljmp State5_Cool
+NOT_EQL_cool:
+	jc A_LESS_cool
+A_GREATER_cool:
+	ljmp State5_Cool
+A_LESS_cool:
+	; reset all settings
+	mov SoakTemp, #0x00
+   	mov ReflTemp, #0x00
+	mov BCD_counterSec, #0x00
+	mov BCD_counterMin, #0x00
+	mov SoakMinAlarm, #0x00
+	mov SoakSecAlarm, #0x00
+	mov ReflMinAlarm, #0x00
+	mov ReflSecAlarm, #0x00
 	
-	mov currentTemp, bcd
-
-	; Check temperature and sound alarm if ...
-;	lcall TempAlarm
-
-SendCelcius:
-	; convert back to celcius, since bcd is in kelvin
-	lcall bcd2hex
-	load_y(273)
-	lcall sub32
-	lcall hex2bcd
-	Display_BCD(bcd)
-	ret
+	lcall Display_Soak
+	lcall Display_Refl
 	
-;------------------------------------;
-;   Sends 10 BCD num in bcd to LCD   ;
-;------------------------------------;
-
-Display_TempC:
-	Set_Cursor(2, 6)
-	Display_BCD(bcd+0)
-	ret
-	
-Read_ADC_Channel:
-	clr CE_ADC
-	mov R0, #00000001B 	; start at b1
-	lcall DO_SPI_G
-	mov a, b
-	swap a
-	anl a, #0F0H
-	setb acc.7 		; set onsingle mode (bit 7)
-	mov R0, a
-
-	lcall DO_SPI_G
-	mov a, R1 			; R1 bits 8 9
-	anl a, #00000011B 		; last 2 sig bits
-	mov R7, a 				; save high.
-	mov R0, #55H 		; don't care
-	lcall DO_SPI_G
-	mov aR6, R1 		; R1 bits 0-7 save low
-	setb CE_ADC
-	ret
+	ljmp State0_SetupSoak	
 	
 END

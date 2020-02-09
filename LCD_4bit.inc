@@ -226,12 +226,121 @@ Display_Refl:
 	Display_BCD(ReflSecAlarm)
 	ret
 
-
 ;------------------------------------;
-;	       Buttons               ;
+;   		Displays	     ;
 ;------------------------------------;
+;--------- show current temperature ----------;
+TempDisplay:
 
+
+;--------- show current soak/refl process ---------;
+TimerDisplay:
+
+;----------------------------------------;
+;   	Checking Equal or greater	 ;
+;----------------------------------------;
+;------------- Soak Temp ----------------;
+Compare_SoakTemp_GE mac
+	mov a, %0		; compare current temp with SoakTemp
+	lcall ?Compare_GE mac
+endmac
+
+?Compare_SoakTemp_GE:
+	clr c
+	cjne a, SoakTemp, NOT_EQ	; current temp and soak temp
+EQL:				; proceed
+	sjmp END_CMP
+
+NOT_EQ:			;if not equal, check if less
+	jc A_LESS
+
+A_GREATER:		; proceed
+	sjmp END_CMP
+
+A_LESS:		; loop
+	ret
+
+END_CMP:	;Finished
+	ljmp Forever
 	
+;------------- Refl Temp ----------------;
+
+;------------------------------------;
+;   	Temperature Stuff	     ;
+;------------------------------------;
+
+Display_TempC:
+	Set_Cursor(2, 6)
+	Display_BCD(bcd+0)
+	ret
+	
+Read_ADC_Channel:
+	clr CE_ADC
+	mov R0, #00000001B 	; start at b1
+	lcall DO_SPI_G
+	mov a, b
+	swap a
+	anl a, #0F0H
+	setb acc.7 		; set onsingle mode (bit 7)
+	mov R0, a
+
+	lcall DO_SPI_G
+	mov a, R1 			; R1 bits 8 9
+	anl a, #00000011B 		; last 2 sig bits
+	mov R7, a 				; save high.
+	mov R0, #55H 		; don't care
+	lcall DO_SPI_G
+	mov aR6, R1 		; R1 bits 0-7 save low
+	setb CE_ADC
+	ret
+	
+GetTemp:
+	mov x, SaveT
+	mov x+1, SaveT+1
+	mov x+2, #0
+	mov x+3, #0
+	
+	; celcius
+	load_y(410)
+	lcall mul32
+	load_y(1023)
+	lcall div32
+	load_y(273)
+	lcall sub32
+
+	lcall hex2bcd
+	lcall Display_TempC
+	
+	mov currentTemp, bcd
+
+	; Check temperature and sound alarm if ...
+	; lcall TempAlarm
+
+SendCelcius:
+	; convert back to celcius, since bcd is in kelvin
+	lcall bcd2hex
+	load_y(273)
+	lcall sub32
+	lcall hex2bcd
+	Display_BCD(bcd)
+	ret
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
  
 	
