@@ -1,5 +1,7 @@
 
+$NOLIST
 $MOD9351
+$LIST
 
 toaster_on EQU P0.0 
 
@@ -8,7 +10,9 @@ org 0000H
 org 001BH
 	ljmp 1803H
 
-$include(C:\Users\Bryan\Desktop\Courses\ELEC 291\Project 1\Delivered power macro\Blinky macro.inc)
+$NOLIST
+$INCLUDE(Blinkymacro.inc)
+$LIST
 
 
 
