@@ -1,7 +1,7 @@
 cseg
 
-; When using a 22.1184MHz crystal in fast mode
-; one cycle takes 1.0/22.1184MHz = 45.21123 ns
+; When using a 7.373MHz clock
+; one cycle takes 2.0/7.373MHz = 271.26 ns
 
 ;---------------------------------;
 ; Wait 40 microseconds            ;
@@ -10,9 +10,7 @@ Wait40uSec:
 	push AR0
 	mov R0, #74
 L0: 
-	nop
-	nop
-	djnz R0, L0 ; 1+1+3 cycles->5*45.21123ns*177=40us
+	djnz R0, L0 ; 2 cycles->2*271.26ns*74=40us
 	pop AR0
     ret
 
@@ -30,25 +28,25 @@ endmac
 	push AR0
 	push AR1
 L3: mov R1, #10
-L2: mov R0, #1
-L1: djnz R0, L1 ; 3 cycles->3*45.21123ns*166=22.51519us
-    djnz R1, L2 ; 22.51519us*45=1.013ms
+L2: mov R0, #184
+L1: djnz R0, L1 ; 2 cycles->2*271.26ns*184=100us
+    djnz R1, L2 ; 100us*10=1ms
     djnz R2, L3 ; number of millisecons to wait passed in R2
     pop AR1
     pop AR0
     ret
 
 ;---------------------------------;
-; 	  Wait HalfSecond         ;
+; Wait Half Second	          ;
 ;---------------------------------;
 
 WaitHalfSec:
-    mov R2, #89
+    mov R2, #20
 L6: mov R1, #250
-L5: mov R0, #166
-L4: djnz R0, L6 ; 3 cycles->3*45.21123ns*166=22.51519us
-    djnz R1, L5 ; 22.51519us*250=5.629ms
-    djnz R2, L4 ; 5.629ms*89=0.5s (approximately)
+L5: mov R0, #184
+L4: djnz R0, L4 ; 2 machine cycles-> 2*0.27126us*184=100us
+    djnz R1, L5 ; 100us*250=0.025s
+    djnz R2, L6 ; 0.025s*20=0.5s
     ret
 	
 ;---------------------------------;
@@ -58,6 +56,7 @@ LCD_pulse:
 	setb LCD_E
 	lcall Wait40uSec
 	clr LCD_E
+    lcall Wait40uSec
     ret
 
 ;---------------------------------;
@@ -74,7 +73,6 @@ LCD_byte:
 	mov c, ACC.4
 	mov LCD_D4, c
     lcall LCD_pulse
-    lcall Wait40uSec
 	; Write low 4 bits next
 	mov c, ACC.3
 	mov LCD_D7, c
@@ -119,9 +117,7 @@ LCD_4BIT:
 	clr LCD_RW  ; We are only writing to the LCD in this program
 	
 	; After power on, let the LCD start up before initializing
-	; NOTE: the preprogrammed power-on delay of 16 ms on the AT89LP52
-	; seems to be enough.  That is why this line is commented out.
-	; Wait_Milli_Seconds(#40)
+	Wait_Milli_Seconds(#40)
 	
 	; First make sure the LCD is in 8-bit mode and then change to 4-bit mode
 	WriteCommand(#0x33)
@@ -205,9 +201,39 @@ endmac
 	ret
 
 ;------------------------------------;
+; Display a char in the LCD          ;
+;------------------------------------;
+Display_char mac
+	push acc
+	mov a, %0
+	lcall ?WriteData
+	pop acc
+endmac
+
+
+;------------------------------------;
 ;   	  Display on LCD             ;
 ;------------------------------------;
+WriteNum:
+	;check refltimer_done if update soak or refl time
+	jnb refltimer_done, Display_SoakTimer	; if in soak stage, update soak display
+	jb refltimer_done, Display_ReflTimer		; if in refl stage, update refl display
+    ; jumps to Forever after display
 
+Display_SoakTimer:
+	Set_Cursor(1, 11)
+	Display_BCD(BCD_counterMin)
+	Set_Cursor(1, 14)
+	Display_BCD(BCD_counterSec)
+	ljmp Forever
+
+Display_ReflTimer:
+	Set_Cursor(2, 11)
+	Display_BCD(BCD_counterMin)
+	Set_Cursor(2, 14)
+	Display_BCD(BCD_counterSec)
+	ljmp Forever
+	
 Display_Soak:
 	Set_Cursor(1, 7)
 	Display_BCD(SoakTemp)
@@ -225,8 +251,108 @@ Display_Refl:
 	Set_Cursor(2, 14)
 	Display_BCD(ReflSecAlarm)
 	ret
+	
+;------------------------------------;
+;   		Displays	     ;
+;------------------------------------;
+;------- show current temperature --------;
+TempDisplay:
+	setb tempdisplay_flag
+	
+	Set_Cursor(1,1)
+	Send_Constant_String(#_clearLCD)
+	Set_Cursor(1,2)
+	Send_Constant_String(#_clearLCD)
+
+	Set_Cursor(1,1)
+	Send_Constant_String(#_Temperature_LCD)
+	Set_Cursor(1,6)
+	Display_BCD(currentTemp)
+	
+	ljmp loop_a
+
+;-------------- show timers ---------------;
+TimerDisplay:
+	clr tempdisplay_flag
+
+	Set_Cursor(1,1)
+	Send_Constant_String(#_clearLCD)
+	Set_Cursor(1,2)
+	Send_Constant_String(#_clearLCD)
+
+    	Set_Cursor(1,1)
+	Send_Constant_String(#_Soak)
+	Set_Cursor(1,6)
+	Send_Constant_String(#_C)
+	Set_Cursor(1,10)
+	Send_Constant_String(#_blank)
+	Set_Cursor(1,11)
+	Send_Constant_String(#_default)
+	
+	Set_Cursor(2,1)
+	Send_Constant_String(#_Refl)
+	Set_Cursor(2,6)
+	Send_Constant_String(#_C)
+	Set_Cursor(2,10)
+	Send_Constant_String(#_blank)
+	Set_Cursor(2,11)
+	Send_Constant_String(#_default)
+
+	lcall Display_Soak
+	lcall Display_Refl
+	
+	ljmp loop_a
+
+
+;----------------------------------------;
+;   	Checking Equal or greater	 ;
+;----------------------------------------;
+;------------- Soak Temp ----------------;
 
 	
+;------------- Refl Temp ----------------;
 
- 
+
+;------------------------------------;
+;   	Temperature Stuff	         ;
+;------------------------------------;
+
+;------------------------------------;
+;   	Temperature Stuff	         ;
+;------------------------------------;
+
+Display_TempC:
+	Set_Cursor(2, 6)
+	Display_BCD(bcd+0)
+	ret
 	
+	GetTemp:
+	mov x, SaveT
+	mov x+1, SaveT+1
+	mov x+2, #0
+	mov x+3, #0
+	
+	; celcius
+	load_y(410)
+	lcall mul32
+	load_y(1023)
+	lcall div32
+	load_y(273)
+	lcall sub32
+
+	lcall hex2bcd
+	lcall Display_TempC
+	
+	mov currentTemp, bcd
+
+	; Check temperature and sound alarm if ...
+	; lcall TempAlarm
+
+SendCelcius:
+	; convert back to celcius, since bcd is in kelvin
+	lcall bcd2hex
+	load_y(273)
+	lcall sub32
+	lcall hex2bcd
+	Display_BCD(bcd)
+	;ret
