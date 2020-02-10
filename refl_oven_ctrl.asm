@@ -72,8 +72,8 @@ bcd: ds 5
 ; TEMPERATURE
 SaveT: ds 4
 currentTemp: ds 2	; current temperature from sensor
-SoakTemp: ds 3		; set soak temperature
-ReflTemp: ds 3		; set refl temperature
+SoakTemp: ds 4		; set soak temperature
+ReflTemp: ds 4		; set refl temperature
 ; TIMER COUNTERS	; contains counters and timers
 Count1ms: ds 2 		; Used to determine when (1) second has passed
 BCD_counterSec: ds 1
@@ -282,6 +282,7 @@ MainProgram:
    	
     mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
+   	mov SoakTemp+1, #00000000
 	mov BCD_counterSec, #0x00
 	mov BCD_counterMin, #0x00
 	mov SoakMinAlarm, #0x00
@@ -358,6 +359,13 @@ SetSoakTemp:
     jnb TEMP_BUTTON, $
     ; increment Soak temp
 	mov a, SoakTemp
+	cjne a, #0x99, dontincrementhigherSOAK
+incrementhigherSOAK:
+	mov a, SoakTemp+1
+	add a, #0x01
+	da a
+	mov SoakTemp+1, a
+dontincrementhigherSOAK:
 	add a, #0x01
 	da a
 	mov SoakTemp, a
@@ -456,15 +464,14 @@ SetReflTemp:
     jb TEMP_BUTTON, SetReflMin
     jnb TEMP_BUTTON, $
     ; increment Soak temp
-	mov a, ReflTemp
-	cjne a, #100, incrementhigher
-	sjmp dontincrementhigher
-incrementhigher:
+	mov a, ReflTemp	
+	cjne a, #0x99, dontincrementhigherREFL
+incrementhigherREFL:
 	mov a, ReflTemp+1
 	add a, #0x01
-	mov ReflTemp, a
-	clr a
-dontincrementhigher:	
+	da a
+	mov ReflTemp+1, a
+dontincrementhigherREFL:
 	add a, #0x01
 	da a
 	mov ReflTemp, a
@@ -534,11 +541,11 @@ State1_RampSoak:
 	;--------------------------------------------;
 	; Check current temperature Using Will's code;
 	;--------------------------------------------;
-	lcall Read_ADC_Channel
-	lcall GetTemp
-	clr c
-	mov a, currentTemp
-	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
+	;lcall Read_ADC_Channel
+	;lcall GetTemp
+	;clr c
+	;mov a, currentTemp
+	;cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
 EQL_soak:
 	ljmp Forever
 	subb a, currentTemp
@@ -720,6 +727,7 @@ StartReflTimer:
 	ljmp Forever
 	
 decrementMin:
+    mov a, BCD_counterMin
     add a, #0x99 	;decrement minute counter
     da a
     mov BCD_counterMin, a
