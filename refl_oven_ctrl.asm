@@ -33,7 +33,7 @@ ALSEC_BUTTON   equ P0.6		; Inc seconds
 STARTSTOP_BUTTON equ P2.7	; Start/Stop process immediately, Settings
 MODE_BUTTON equ P2.4				; Switch Displays between Clock, Current Temp, Settings/timer
 
-toaster_on EQU P3.7 
+toaster_on EQU P0.1 
 
 ; Reset vector
 org 0x0000
@@ -72,8 +72,8 @@ bcd: ds 5
 ; TEMPERATURE
 SaveT: ds 4
 currentTemp: ds 2	; current temperature from sensor
-SoakTemp: ds 2		; set soak temperature
-ReflTemp: ds 2		; set refl temperature
+SoakTemp: ds 3		; set soak temperature
+ReflTemp: ds 3		; set refl temperature
 ; TIMER COUNTERS	; contains counters and timers
 Count1ms: ds 2 		; Used to determine when (1) second has passed
 BCD_counterSec: ds 1
@@ -457,6 +457,14 @@ SetReflTemp:
     jnb TEMP_BUTTON, $
     ; increment Soak temp
 	mov a, ReflTemp
+	cjne a, #100, incrementhigher
+	sjmp dontincrementhigher
+incrementhigher:
+	mov a, ReflTemp+1
+	add a, #0x01
+	mov ReflTemp, a
+	clr a
+dontincrementhigher:	
 	add a, #0x01
 	da a
 	mov ReflTemp, a
@@ -490,7 +498,7 @@ incrementRM:
 SetReflSec:
 	jb ALSEC_BUTTON, CheckStartTimer
     Wait_Milli_seconds(#50)
-    jb ALSEC_BUTTON, CheckStartTimer
+    jb ALSEC_BUTTON, jumper
     jnb ALSEC_BUTTON, $
     
 	; Now increment Soak sec
@@ -502,6 +510,9 @@ SetReflSec:
 	clr a
 	lcall Display_Refl
 	ljmp State0_SetupRefl
+jumper:
+	ljmp CheckStartTimer	
+	
 incrementRS:
 	add a, #0x01
 	da a
