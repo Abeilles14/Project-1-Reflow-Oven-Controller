@@ -33,7 +33,7 @@ ALSEC_BUTTON   equ P0.6		; Inc seconds
 STARTSTOP_BUTTON equ P2.7	; Start/Stop process immediately, Settings
 MODE_BUTTON equ P2.4				; Switch Displays between Clock, Current Temp, Settings/timer
 
-toaster_on EQU P0.0 
+toaster_on EQU P3.7 
 
 ; Reset vector
 org 0x0000
@@ -53,7 +53,7 @@ org 0x0013
 
 ; Timer/Counter 1 overflow interrupt vector (not used in this code)
 org 0x001B
-	ljmp 1803H
+	reti
 
 ; Serial port receive/transmit interrupt vector (not used in this code)
 org 0x0023 
@@ -88,6 +88,7 @@ ReflSecAlarm: ds 1
 
 BSEG
 mf: dbit 1
+carry_flag: dbit 1
 half_seconds_flag: dbit 1	; Set to 1 in the ISR every time 1000 ms had passed (actually 1 second flag)
 start_counter: dbit 1		; Set to 1 once ready to start countdown
 refltimer_done: dbit 1		; Set to 1 once refl timer starts
@@ -276,7 +277,7 @@ MainProgram:
     ; In case you decide to use the pins of P0 configure the port in bidirectional mode:
     mov P0M0, #0	;ESSENTIAL!! BUTTONS WILL GO NUTS
     mov P0M1, #0
-	mov	P0M2,#0x00
+	;mov	P0M2, #0
     clr toaster_on  
    	
     mov SoakTemp, #0x00
@@ -543,7 +544,8 @@ A_LESS_soak:
 	clr c
 	mov a, currentTemp
 	subb a, #50
-	jnb c, continueS1
+	mov carry_flag, c
+	jnb carry_flag, continueS1
 
 	mov a,	BCD_counterSec
 	cjne a, #60, continueS1
@@ -625,8 +627,11 @@ loop_a:
 loop_b:
     clr half_seconds_flag ; We clear this flag in the main loop, but it is set in the ISR for timer 2
     mov a, BCD_counterSec
-    cjne a, #0x99, WriteNum  ;check to see if sec counter is at 00, skip if not 00
-   
+    cjne a, #0x99, goto  ;check to see if sec counter is at 00, skip if not 00
+	sjmp skipthecommand
+goto:
+	ljmp WriteNum   
+skipthecommand:   
     mov a, #0x59 			; if sec at 00, reset to number 59
     mov BCD_counterSec, a
     

@@ -1,0 +1,971 @@
+                  2   $LIST
+0000              4   
+0000              5   ; INTERRUPTS
+0000              6   TIMER0_RELOAD_L DATA 0xf2
+0000              7   TIMER1_RELOAD_L DATA 0xf3
+0000              8   TIMER0_RELOAD_H DATA 0xf4
+0000              9   TIMER1_RELOAD_H DATA 0xf5
+0000             10   
+0000             11   ;DECLARATIONS
+0000             12   CLK           EQU 22118400 ; Microcontroller system crystal frequency in Hz
+0000             13   TIMER0_RATE   EQU 4096     ; 2048Hz squarewave (peak amplitude of CEM-1203 speaker)
+0000             14   TIMER0_RELOAD EQU ((65536-(CLK/TIMER0_RATE)))
+0000             15   TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
+0000             16   TIMER2_RELOAD EQU ((65536-(CLK/TIMER2_RATE)))
+0000             17   BAUD equ 115200
+0000             18   BRG_VAL equ (0x100-(CLK/(16*BAUD)))
+0000             19   
+0000             20   ; PINS INPUT OUTPUTS
+0000             21   CE_ADC EQU P2.0
+0000             22   MY_MOSI EQU P2.1
+0000             23   MY_MISO EQU P2.2
+0000             24   MY_SCLK EQU P2.3
+0000             25   
+0000             26   BOOT_BUTTON equ P4.5
+0000             27   SOUND_OUT equ P3.7
+0000             28   
+0000             29   TEMP_BUTTON  equ P0.0            ; Inc temperature
+0000             30   ALMIN_BUTTON  equ P0.3           ; Inc minutes
+0000             31   ALSEC_BUTTON   equ P0.6          ; Inc seconds
+0000             32   
+0000             33   STARTSTOP_BUTTON equ P2.7        ; Start/Stop process immediately, Settings
+0000             34   MODE_BUTTON equ P2.4                             ; Switch Displays between Clock, Current Temp, Settings/timer
+0000             35   
+0000             36   toaster_on EQU P3.7 
+0000             37   
+0000             38   ; Reset vector
+0000             39   org 0x0000
+0000 0206E4      40       ljmp MainProgram
+0003             41       
+0003             42   ; External interrupt 0 vector (not used in this code)
+0003             43   org 0x0003
+0003 32          44            reti
+0004             45   
+0004             46   ; Timer/Counter 0 overflow interrupt vector
+000B             47   org 0x000B
+000B 020695      48            ljmp Timer0_ISR
+000E             49   
+000E             50   ; External interrupt 1 vector (not used in this code)
+0013             51   org 0x0013
+0013 32          52            reti
+0014             53   
+0014             54   ; Timer/Counter 1 overflow interrupt vector (not used in this code)
+001B             55   org 0x001B
+001B 32          56            reti
+001C             57   
+001C             58   ; Serial port receive/transmit interrupt vector (not used in this code)
+0023             59   org 0x0023 
+0023 32          60            reti
+0024             61            
+0024             62   ; Timer/Counter 2 overflow interrupt vector
+002B             63   org 0x002B
+002B 0206B1      64            ljmp Timer2_ISR
+002E             65   
+002E             66   ; These register definitions needed by 'math32.inc'
+0030             67   DSEG at 0x30
+0030             68   x:   ds 4
+0034             69   y:   ds 4
+0038             70   bcd: ds 5
+003D             71   
+003D             72   ; TEMPERATURE
+003D             73   SaveT: ds 4
+0041             74   currentTemp: ds 2        ; current temperature from sensor
+0043             75   SoakTemp: ds 2           ; set soak temperature
+0045             76   ReflTemp: ds 2           ; set refl temperature
+0047             77   ; TIMER COUNTERS         ; contains counters and timers
+0047             78   Count1ms: ds 2           ; Used to determine when (1) second has passed
+0049             79   BCD_counterSec: ds 1
+004A             80   BCD_counterMin: ds 1
+004B             81   BCD_runtimeSec: ds 1
+004C             82   BCD_runtimeMin: ds 1
+004D             83   ; ALARMS
+004D             84   SoakMinAlarm: ds 1               ;contains set time values
+004E             85   SoakSecAlarm: ds 1
+004F             86   ReflMinAlarm: ds 1
+0050             87   ReflSecAlarm: ds 1
+0051             88   
+0000             89   BSEG
+0000             90   mf: dbit 1
+0001             91   carry_flag: dbit 1
+0002             92   half_seconds_flag: dbit 1        ; Set to 1 in the ISR every time 1000 ms had passed (actually 1 second flag)
+0003             93   start_counter: dbit 1            ; Set to 1 once ready to start countdown
+0004             94   refltimer_done: dbit 1           ; Set to 1 once refl timer starts
+0005             95   tempdisplay_flag: dbit 1         ; Set to 1 for temp and run time display
+0006             96   
+002E             97   CSEG
+002E             98   ; These 'equ' must match the wiring between the microcontroller and the LCD!
+002E             99   LCD_RS equ P1.1
+002E            100   LCD_RW equ P1.2
+002E            101   LCD_E  equ P1.3
+002E            102   LCD_D4 equ P3.2
+002E            103   LCD_D5 equ P3.3
+002E            104   LCD_D6 equ P3.4
+002E            105   LCD_D7 equ P3.5
+002E            106   
+002E            107   ; LCD and Putty Strings
+002E 48656C6C   108   _Hello_World: DB 'Hello World!', '\r', '\n',0
+     6F20576F
+     726C6421
+     0D0A00
+003D 0D0A00     109   _New_Line: DB '\r\n', 0
+0040 536F616B   110   _Soak: DB 'Soak:',0
+     3A00
+0046 5265666C   111   _Refl: DB 'Refl:',0
+     3A00
+004C 54656D70   112   _Temperature_LCD: DB 'Temp:',0   
+     3A00
+0052 30303043   113   _C:      DB '000C',0
+     00
+0057 2000       114   _blank: DB ' ',0
+0059 30303A30   115   _default: DB '00:00',0
+     3000
+005F 20202020   116   _clearLCD: DB '                '
+     20202020
+     20202020
+     20202020
+006F            117   
+                546   $LIST
+                122   $LIST
+0645            124   
+0645            125   ; INIT SPI
+0645            126   INIT_SPI:
+0645 D2A2       127            setb MY_MISO ; Make MISO an input pin
+0647 C2A3       128            clr MY_SCLK ; For mode (0,0) SCLK is zero
+0649 22         129            ret
+064A            130   DO_SPI_G:
+064A C0E0       131            push acc
+064C 7900       132            mov R1, #0 ; Received byte stored in R1
+064E 7A08       133            mov R2, #8 ; Loop counter (8-bits)
+0650            134   DO_SPI_G_LOOP:
+0650 E8         135            mov a, R0 ; Byte to write is in R0
+0651 33         136            rlc a ; Carry flag has bit to write
+0652 F8         137            mov R0, a
+0653 92A1       138            mov MY_MOSI, c
+0655 D2A3       139            setb MY_SCLK ; Transmit
+0657 A2A2       140            mov c, MY_MISO ; Read received bit
+0659 E9         141            mov a, R1 ; Save received bit in R1
+065A 33         142            rlc a
+065B F9         143            mov R1, a
+065C C2A3       144            clr MY_SCLK
+065E DAF0       145            djnz R2, DO_SPI_G_LOOP
+0660 D0E0       146            pop acc
+0662 22         147            ret
+0663            148            
+0663            149   ; Configure the serial port and baud rate
+0663            150   InitSerialPort:
+0663            151       ; Since the reset button bounces, we need to wait a bit before
+0663            152       ; sending messages, otherwise we risk displaying gibberish!
+0663 79DE       153       mov R1, #222
+0665 78A6       154       mov R0, #166
+0667 D8FE       155       djnz R0, $   ; 3 cycles->3*45.21123ns*166=22.51519us
+0669 D9FA       156       djnz R1, $-4 ; 22.51519us*222=4.998ms
+066B            157       ; Now we can proceed with the configuration
+066B 438780     158            orl     PCON,#0x80
+066E 759852     159            mov     SCON,#0x52
+0671 759B00     160            mov     BDRCON,#0x00
+0674 759AF4     161            mov     BRL,#BRG_VAL
+0677 759B1E     162            mov     BDRCON,#0x1E ; BDRCON=BRR|TBCK|RBCK|SPD;
+067A 22         163       ret
+067B            164            
+067B            165   EX1_ISR:
+067B C2CA       166      clr TR2
+067D 32         167      reti
+067E            168   
+067E            169   ;---------------------------------;
+067E            170   ; Routine to initialize the ISR   ;
+067E            171   ; for timer 0                     ;
+067E            172   ;---------------------------------;
+067E            173   Timer0_Init:
+067E E589       174            mov a, TMOD
+0680 54F0       175            anl a, #0xf0            ; Clear the bits for timer 0
+0682 4401       176            orl a, #0x01            ; Configure timer 0 as 16-timer
+0684 F589       177            mov TMOD, a
+0686 758CEA     178            mov TH0, #high(TIMER0_RELOAD)
+0689 758AE8     179            mov TL0, #low(TIMER0_RELOAD)
+068C            180            ; Set autoreload value
+068C 75F4EA     181            mov TIMER0_RELOAD_H, #high(TIMER0_RELOAD)
+068F 75F2E8     182            mov TIMER0_RELOAD_L, #low(TIMER0_RELOAD)
+0692            183            ; Enable the timer and interrupts
+0692 D2A9       184       setb ET0             ; Enable timer 0 interrupt
+0694 22         185            ret
+0695            186   
+0695            187   ;---------------------------------;
+0695            188   ; ISR for timer 0.  Set to execute;
+0695            189   ; every 1/4096Hz to generate a    ;
+0695            190   ; 2048 Hz square wave at pin P3.7 ;
+0695            191   ;---------------------------------;
+0695            192   Timer0_ISR:
+0695            193            ;clr TF0  ; According to the data sheet this is done for us already.
+0695 B2B7       194            cpl SOUND_OUT ; Connect speaker to P3.7!
+0697 32         195            reti
+0698            196   
+0698            197   
+0698            198   ;---------------------------------;
+0698            199   ; Routine to initialize the ISR   ;
+0698            200   ; for timer 2                     ;
+0698            201   ;---------------------------------;
+0698            202   Timer2_Init:
+0698 75C800     203            mov T2CON, #0 ; Stop timer/counter.  Autoreload mode.
+069B 75CDA9     204            mov TH2, #high(TIMER2_RELOAD)
+069E 75CC9A     205            mov TL2, #low(TIMER2_RELOAD)
+06A1            206            ; Set the reload value
+06A1 75CBA9     207            mov RCAP2H, #high(TIMER2_RELOAD)
+06A4 75CA9A     208            mov RCAP2L, #low(TIMER2_RELOAD)
+06A7            209            ; Init One millisecond interrupt counter.  It is a 16-bit variable made with two 8-bit parts
+06A7 E4         210            clr a
+06A8 F547       211            mov Count1ms+0, a
+06AA F548       212            mov Count1ms+1, a
+06AC            213            ; Enable the timer and interrupts
+06AC D2AD       214       setb ET2  ; Enable timer 2 interrupt
+06AE D2CA       215       setb TR2  ; Enable timer 2
+06B0 22         216            ret
+06B1            217   
+06B1            218   ;---------------------------------;
+06B1            219   ; ISR for timer 2                 ;
+06B1            220   ;---------------------------------;
+06B1            221   Timer2_ISR:
+06B1 C2CF       222            clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in ISR
+06B3 B2B6       223            cpl P3.6 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+06B5            224            
+06B5            225            ; The two registers used in the ISR must be saved in the stack
+06B5 C0E0       226            push acc
+06B7 C0D0       227            push psw
+06B9            228            
+06B9            229            ; Increment the 16-bit one mili second counter
+06B9 0547       230            inc Count1ms+0    ; Increment the low 8-bits first
+06BB E547       231            mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
+06BD 7002       232            jnz Inc_Done
+06BF 0548       233            inc Count1ms+1  
+06C1            234       
+06C1            235       Inc_Done:
+06C1            236            ; Check if half second has passed
+06C1 E547       237            mov a, Count1ms+0
+06C3 B4E819     238            cjne a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
+06C6 E548       239            mov a, Count1ms+1
+06C8 B40314     240            cjne a, #high(1000), Timer2_ISR_done
+06CB            241            
+06CB            242            ; 500 milliseconds have passed.  Set a flag so the main program knows
+06CB D202       243            setb half_seconds_flag ; Let the main program know half second had passed
+06CD B28C       244            cpl TR0 ; Enable/disable timer/counter 0. This line creates a beep-silence-beep-silence sound.
+06CF            245            ; Reset to zero the milli-seconds counter, it is a 16-bit variable
+06CF E4         246            clr a
+06D0 F547       247            mov Count1ms+0, a
+06D2 F548       248            mov Count1ms+1, a
+06D4            249            ; Decrement the BCD counter
+06D4 E549       250            mov a, BCD_counterSec
+06D6 8002       251            sjmp Timer2_ISR_decrement               ; jump to decrement counter
+06D8            252   ;   jnb ALSEC_BUTTON, Timer2_ISR_decrement
+06D8            253   ;        add a, #0x01
+06D8 8002       254            sjmp Timer2_ISR_da
+06DA            255   Timer2_ISR_decrement:
+06DA 2499       256            add a, #0x99 ; Adding the 10-complement of -1 is like subtracting 1.
+06DC            257   Timer2_ISR_da:
+06DC D4         258            da a ; Decimal adjust instruction.  Check datasheet for more details!
+06DD F549       259            mov BCD_counterSec, a
+06DF            260            
+06DF            261   Timer2_ISR_done:
+06DF D0D0       262            pop psw
+06E1 D0E0       263            pop acc
+06E3 32         264            reti
+06E4            265       
+06E4            266   ;----------------------;
+06E4            267   ;    MAIN PROGRAM      ;
+06E4            268   ;----------------------;
+06E4            269   MainProgram:
+06E4 75817F     270       mov SP, #7FH
+06E7 120346     271       lcall LCD_4BIT
+06EA            272       
+06EA            273       ; enable global interrupts
+06EA 12067E     274       lcall Timer0_Init
+06ED 120698     275       lcall Timer2_Init
+06F0            276       
+06F0            277       ; In case you decide to use the pins of P0 configure the port in bidirectional mode:
+06F0 75E600     278       mov P0M0, #0         ;ESSENTIAL!! BUTTONS WILL GO NUTS
+06F3 75E700     279       mov P0M1, #0
+06F6            280            ;mov    P0M2, #0
+06F6 C2B7       281       clr toaster_on  
+06F8            282            
+06F8 754300     283       mov SoakTemp, #0x00
+06FB 754500     284            mov ReflTemp, #0x00
+06FE 754900     285            mov BCD_counterSec, #0x00
+0701 754A00     286            mov BCD_counterMin, #0x00
+0704 754D00     287            mov SoakMinAlarm, #0x00
+0707 754E00     288            mov SoakSecAlarm, #0x00
+070A 754F00     289            mov ReflMinAlarm, #0x00
+070D 755000     290            mov ReflSecAlarm, #0x00
+0710            291            
+0710            292       ;set constant strings lcd
+0710 C0E0       293            push acc
+0712 7401       293            mov a, #1
+0714 14         293            dec a
+0715 12037F     293            lcall ?Set_Cursor_1 ; Select column and row
+0718 D0E0       293            pop acc
+071A C083       294            push dph
+071C C082       294            push dpl
+071E C0E0       294            push acc
+0720 900040     294            mov dptr, #_Soak
+0723 120372     294            lcall ?Send_Constant_String
+0726 D0E0       294            pop acc
+0728 D082       294            pop dpl
+072A D083       294            pop dph
+072C C0E0       295            push acc
+072E 7406       295            mov a, #6
+0730 14         295            dec a
+0731 12037F     295            lcall ?Set_Cursor_1 ; Select column and row
+0734 D0E0       295            pop acc
+0736 C083       296            push dph
+0738 C082       296            push dpl
+073A C0E0       296            push acc
+073C 900052     296            mov dptr, #_C
+073F 120372     296            lcall ?Send_Constant_String
+0742 D0E0       296            pop acc
+0744 D082       296            pop dpl
+0746 D083       296            pop dph
+0748 C0E0       297            push acc
+074A 740A       297            mov a, #10
+074C 14         297            dec a
+074D 12037F     297            lcall ?Set_Cursor_1 ; Select column and row
+0750 D0E0       297            pop acc
+0752 C083       298            push dph
+0754 C082       298            push dpl
+0756 C0E0       298            push acc
+0758 900057     298            mov dptr, #_blank
+075B 120372     298            lcall ?Send_Constant_String
+075E D0E0       298            pop acc
+0760 D082       298            pop dpl
+0762 D083       298            pop dph
+0764 C0E0       299            push acc
+0766 740B       299            mov a, #11
+0768 14         299            dec a
+0769 12037F     299            lcall ?Set_Cursor_1 ; Select column and row
+076C D0E0       299            pop acc
+076E C083       300            push dph
+0770 C082       300            push dpl
+0772 C0E0       300            push acc
+0774 900059     300            mov dptr, #_default
+0777 120372     300            lcall ?Send_Constant_String
+077A D0E0       300            pop acc
+077C D082       300            pop dpl
+077E D083       300            pop dph
+0780            301            
+0780 C0E0       302            push acc
+0782 7401       302            mov a, #1
+0784 14         302            dec a
+0785 12037D     302            lcall ?Set_Cursor_2 ; Select column and row
+0788 D0E0       302            pop acc
+078A C083       303            push dph
+078C C082       303            push dpl
+078E C0E0       303            push acc
+0790 900046     303            mov dptr, #_Refl
+0793 120372     303            lcall ?Send_Constant_String
+0796 D0E0       303            pop acc
+0798 D082       303            pop dpl
+079A D083       303            pop dph
+079C C0E0       304            push acc
+079E 7406       304            mov a, #6
+07A0 14         304            dec a
+07A1 12037D     304            lcall ?Set_Cursor_2 ; Select column and row
+07A4 D0E0       304            pop acc
+07A6 C083       305            push dph
+07A8 C082       305            push dpl
+07AA C0E0       305            push acc
+07AC 900052     305            mov dptr, #_C
+07AF 120372     305            lcall ?Send_Constant_String
+07B2 D0E0       305            pop acc
+07B4 D082       305            pop dpl
+07B6 D083       305            pop dph
+07B8 C0E0       306            push acc
+07BA 740A       306            mov a, #10
+07BC 14         306            dec a
+07BD 12037D     306            lcall ?Set_Cursor_2 ; Select column and row
+07C0 D0E0       306            pop acc
+07C2 C083       307            push dph
+07C4 C082       307            push dpl
+07C6 C0E0       307            push acc
+07C8 900057     307            mov dptr, #_blank
+07CB 120372     307            lcall ?Send_Constant_String
+07CE D0E0       307            pop acc
+07D0 D082       307            pop dpl
+07D2 D083       307            pop dph
+07D4 C0E0       308            push acc
+07D6 740B       308            mov a, #11
+07D8 14         308            dec a
+07D9 12037D     308            lcall ?Set_Cursor_2 ; Select column and row
+07DC D0E0       308            pop acc
+07DE C083       309            push dph
+07E0 C082       309            push dpl
+07E2 C0E0       309            push acc
+07E4 900059     309            mov dptr, #_default
+07E7 120372     309            lcall ?Send_Constant_String
+07EA D0E0       309            pop acc
+07EC D082       309            pop dpl
+07EE D083       309            pop dph
+07F0            310            
+07F0 120645     311            lcall INIT_SPI
+07F3 120663     312            lcall InitSerialPort
+07F6            313   
+07F6 D2AF       314            setb EA                 ;counter not running originally
+07F8 C205       315            clr tempdisplay_flag
+07FA            316            
+07FA            317            ; Set counters
+07FA 754900     318            mov BCD_counterSec, #0x00
+07FD 754A00     319            mov BCD_counterMin, #0x00
+0800 E549       320            mov a, BCD_counterSec           ; number to be displayed placed in accumulator
+0802 C0E0       321            push acc
+0804 740B       321            mov a, #11
+0806 14         321            dec a
+0807 12037F     321            lcall ?Set_Cursor_1 ; Select column and row
+080A D0E0       321            pop acc     ; the place in the LCD where we want the BCD counter value
+080C C000       322            push ar0
+080E A84A       322            mov r0, BCD_counterMin
+0810 120384     322            lcall ?Display_BCD
+0813 D000       322            pop ar0; 
+0815 C0E0       323            push acc
+0817 740B       323            mov a, #11
+0819 14         323            dec a
+081A 12037D     323            lcall ?Set_Cursor_2 ; Select column and row
+081D D0E0       323            pop acc     ; the place in the LCD where we want the BCD counter value
+081F C000       324            push ar0
+0821 A849       324            mov r0, BCD_counterSec
+0823 120384     324            lcall ?Display_BCD
+0826 D000       324            pop ar0;
+0828 02082B     325            ljmp State0_SetupSoak                   ; sets up all soak temp, time, refl temp, time before counter start
+082B            326   
+082B            327   ;-----------------------------;
+082B            328   ;        SET SOAK/REFL SETTINGS    ;
+082B            329   ;-----------------------------;
+082B            330   ;--------- SETUP SOAK ---------;
+082B            331   State0_SetupSoak:
+082B 20C531     332            jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
+082E C002       333            push AR2
+0830 7A32       333            mov R2, #50
+0832 1202EA     333            lcall ?Wait_Milli_Seconds
+0835 D002       333            pop AR2         ; Debounce delay.  This macro is also in 'LCD_4bit.inc'
+0837 20C525     334            jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
+083A 30C5FD     335            jnb BOOT_BUTTON, $
+083D            336            
+083D            337            ;Make LCD screen blink??
+083D            338            
+083D E4         339            clr a                                   ; clear all settings
+083E F543       340            mov SoakTemp, a
+0840 F54D       341            mov SoakMinAlarm, a
+0842 F54E       342            mov SoakSecAlarm, a
+0844 12039A     343            lcall Display_Soak
+0847            344                    
+0847 02082B     345            ljmp State0_SetupSoak   ;loops in Setup until Start button pressed
+084A            346   
+084A            347   CheckReflSet:                    ; if startmode button pressed, set refl
+084A 20A7DE     348            jb STARTSTOP_BUTTON, State0_SetupSoak
+084D C002       349            push AR2
+084F 7A32       349            mov R2, #50
+0851 1202EA     349            lcall ?Wait_Milli_Seconds
+0854 D002       349            pop AR2
+0856 20A7D2     350       jb STARTSTOP_BUTTON, State0_SetupSoak
+0859 30A7FD     351       jnb STARTSTOP_BUTTON, $
+085C 0208DD     352       ljmp State0_SetupRefl
+085F            353            
+085F            354   SetSoakTemp:
+085F 20801D     355            jb TEMP_BUTTON, SetSoakMin ; if 'soak min' button is not pressed, check soak sec
+0862 C002       356            push AR2
+0864 7A32       356            mov R2, #50
+0866 1202EA     356            lcall ?Wait_Milli_Seconds
+0869 D002       356            pop AR2
+086B 208011     357       jb TEMP_BUTTON, SetSoakMin
+086E 3080FD     358       jnb TEMP_BUTTON, $
+0871            359       ; increment Soak temp
+0871 E543       360            mov a, SoakTemp
+0873 2401       361            add a, #0x01
+0875 D4         362            da a
+0876 F543       363            mov SoakTemp, a
+0878 E4         364            clr a
+0879 12039A     365            lcall Display_Soak
+087C            366            ;lcall Display_Refl
+087C 02082B     367            ljmp State0_SetupSoak
+087F            368            
+087F            369   SetSoakMin:
+087F 20832C     370            jb ALMIN_BUTTON, SetSoakSec
+0882 C002       371            push AR2
+0884 7A32       371            mov R2, #50
+0886 1202EA     371            lcall ?Wait_Milli_Seconds
+0889 D002       371            pop AR2
+088B 208320     372       jb ALMIN_BUTTON, SetSoakSec
+088E 3083FD     373       jnb ALMIN_BUTTON, $
+0891            374       
+0891            375            ; Now increment Soak min
+0891 E54D       376            mov a, SoakMinAlarm
+0893 B4590C     377            cjne a, #0x59, incrementSM              ;if not equal to 59, add 1
+0896 7400       378            mov a, #0x00
+0898 D4         379            da a
+0899 F54D       380            mov SoakMinAlarm, a
+089B E4         381            clr a
+089C 12039A     382            lcall Display_Soak
+089F 02082B     383            ljmp State0_SetupSoak   
+08A2            384   incrementSM:
+08A2 2401       385            add a, #0x01
+08A4 D4         386            da a
+08A5 F54D       387            mov SoakMinAlarm, a
+08A7 E4         388            clr a
+08A8 12039A     389            lcall Display_Soak
+08AB 02082B     390            ljmp State0_SetupSoak
+08AE            391            
+08AE            392   SetSoakSec:
+08AE 208699     393            jb ALSEC_BUTTON, CheckReflSet
+08B1 C002       394            push AR2
+08B3 7A32       394            mov R2, #50
+08B5 1202EA     394            lcall ?Wait_Milli_Seconds
+08B8 D002       394            pop AR2
+08BA 20868D     395       jb ALSEC_BUTTON, CheckReflSet
+08BD 3086FD     396       jnb ALSEC_BUTTON, $
+08C0            397       
+08C0            398            ; Now increment Soak sec
+08C0 E54E       399            mov a, SoakSecAlarm
+08C2 B4590C     400            cjne a, #0x59, incrementSS              ;if not equal to 59, add 1
+08C5 7400       401            mov a, #0x00
+08C7 D4         402            da a
+08C8 F54E       403            mov SoakSecAlarm, a
+08CA E4         404            clr a
+08CB 12039A     405            lcall Display_Soak
+08CE 02082B     406            ljmp State0_SetupSoak
+08D1            407   incrementSS:
+08D1 2401       408            add a, #0x01
+08D3 D4         409            da a
+08D4 F54E       410            mov SoakSecAlarm, a
+08D6 E4         411            clr a
+08D7 12039A     412            lcall Display_Soak
+08DA 02082B     413            ljmp State0_SetupSoak
+08DD            414       
+08DD            415   ;--------- SETUP REFLOW  --------;
+08DD            416   State0_SetupRefl:
+08DD 20C53D     417            jb BOOT_BUTTON, SetReflTemp  ; if the 'BOOT' button is not pressed skip
+08E0 C002       418            push AR2
+08E2 7A32       418            mov R2, #50
+08E4 1202EA     418            lcall ?Wait_Milli_Seconds
+08E7 D002       418            pop AR2         ; Debounce delay.  This macro is also in 'LCD_4bit.inc'
+08E9 20C531     419            jb BOOT_BUTTON, SetReflTemp  ; if the 'BOOT' button is not pressed skip
+08EC 30C5FD     420            jnb BOOT_BUTTON, $
+08EF            421            
+08EF            422            ;Make LCD screen blink??
+08EF            423            
+08EF E4         424            clr a
+08F0 F545       425            mov ReflTemp, a
+08F2 F54F       426            mov ReflMinAlarm, a
+08F4 F550       427            mov ReflSecAlarm, a
+08F6 1203D4     428            lcall Display_Refl      
+08F9            429            
+08F9 0208DD     430            ljmp State0_SetupRefl   ;loops in Setup until Start button pressed
+08FC            431                    
+08FC            432   CheckStartTimer:                 ; if modestart buttup pressed, start timer and main loop
+08FC 20A7DE     433            jb STARTSTOP_BUTTON, State0_SetupRefl
+08FF C002       434            push AR2
+0901 7A32       434            mov R2, #50
+0903 1202EA     434            lcall ?Wait_Milli_Seconds
+0906 D002       434            pop AR2
+0908 20A7D2     435       jb STARTSTOP_BUTTON, State0_SetupRefl
+090B 30A7FD     436       jnb STARTSTOP_BUTTON, $
+090E            437       
+090E D202       438            setb half_seconds_flag          ; pressed to exit settings and start timer
+0910 D2CA       439            setb TR2
+0912            440            
+0912 854D4A     441            mov BCD_counterMin, SoakMinAlarm        ; move time settings into counters
+0915 854E49     442            mov BCD_counterSec, SoakSecAlarm
+0918            443            
+0918 C204       444            clr refltimer_done; clear timer done flags to indicate Soak stage
+091A            445            
+091A            446            ;------------------------- TODO ----------------------------;
+091A            447            ; Voice Feedback Soak stage
+091A            448            ; -Set oven to Soak heat- done??
+091A            449            ;-----------------------------------------------------------;
+091A            450            
+091A 0209DF     451            ljmp Forever
+091D            452            
+091D            453   SetReflTemp:
+091D 20801D     454            jb TEMP_BUTTON, SetReflMin ; if 'soak min' button is not pressed, check soak sec
+0920 C002       455            push AR2
+0922 7A32       455            mov R2, #50
+0924 1202EA     455            lcall ?Wait_Milli_Seconds
+0927 D002       455            pop AR2
+0929 208011     456       jb TEMP_BUTTON, SetReflMin
+092C 3080FD     457       jnb TEMP_BUTTON, $
+092F            458       ; increment Soak temp
+092F E545       459            mov a, ReflTemp
+0931 2401       460            add a, #0x01
+0933 D4         461            da a
+0934 F545       462            mov ReflTemp, a
+0936 E4         463            clr a
+0937 1203D4     464            lcall Display_Refl
+093A 0208DD     465            ljmp State0_SetupRefl
+093D            466            
+093D            467   SetReflMin:
+093D 20832C     468            jb ALMIN_BUTTON, SetReflSec
+0940 C002       469            push AR2
+0942 7A32       469            mov R2, #50
+0944 1202EA     469            lcall ?Wait_Milli_Seconds
+0947 D002       469            pop AR2
+0949 208320     470       jb ALMIN_BUTTON, SetReflSec
+094C 3083FD     471       jnb ALMIN_BUTTON, $
+094F            472       
+094F            473            ; Now increment Soak min
+094F E54F       474            mov a, ReflMinAlarm
+0951 B4590C     475            cjne a, #0x59, incrementRM              ;if not equal to 59, add 1
+0954 7400       476            mov a, #0x00
+0956 D4         477            da a
+0957 F54F       478            mov ReflMinAlarm, a
+0959 E4         479            clr a
+095A 1203D4     480            lcall Display_Refl
+095D 0208DD     481            ljmp State0_SetupRefl
+0960            482   incrementRM:
+0960 2401       483            add a, #0x01
+0962 D4         484            da a
+0963 F54F       485            mov ReflMinAlarm, a
+0965 E4         486            clr a
+0966 1203D4     487            lcall Display_Refl
+0969 0208DD     488            ljmp State0_SetupRefl
+096C            489            
+096C            490   SetReflSec:
+096C 20868D     491            jb ALSEC_BUTTON, CheckStartTimer
+096F C002       492            push AR2
+0971 7A32       492            mov R2, #50
+0973 1202EA     492            lcall ?Wait_Milli_Seconds
+0976 D002       492            pop AR2
+0978 208681     493       jb ALSEC_BUTTON, CheckStartTimer
+097B 3086FD     494       jnb ALSEC_BUTTON, $
+097E            495       
+097E            496            ; Now increment Soak sec
+097E E550       497            mov a, ReflSecAlarm
+0980 B4590C     498            cjne a, #0x59, incrementRS              ;if not equal to 59, add 1
+0983 7400       499            mov a, #0x00
+0985 D4         500            da a
+0986 F550       501            mov ReflSecAlarm, a
+0988 E4         502            clr a
+0989 1203D4     503            lcall Display_Refl
+098C 0208DD     504            ljmp State0_SetupRefl
+098F            505   incrementRS:
+098F 2401       506            add a, #0x01
+0991 D4         507            da a
+0992 F550       508            mov ReflSecAlarm, a
+0994 E4         509            clr a
+0995 1203D4     510            lcall Display_Refl
+0998 0208DD     511            ljmp State0_SetupRefl
+099B            512      
+099B            513   ;--------------------------------;
+099B            514   ;                STATE1 RAMP SOAK             ;
+099B            515   ;--------------------------------;  
+099B            516   State1_RampSoak:
+099B            517   ;outputing power = 100%;
+099B C2B7       518       clr toaster_on ; Led on
+099D C002       519            push AR2
+099F 7A63       519            mov R2, #99
+09A1 120632     519            lcall ?Wait_Micro_Seconds
+09A4 D002       519            pop AR2
+09A6 D2B7       520       setb toaster_on ; led off
+09A8 C002       521            push AR2
+09AA 7A01       521            mov R2, #1
+09AC 120632     521            lcall ?Wait_Micro_Seconds
+09AF D002       521            pop AR2
+09B1            522   
+09B1            523            ;--------------------------------------------;
+09B1            524            ; Check current temperature Using Will's code;
+09B1            525            ;--------------------------------------------;
+09B1 1205B1     526            lcall Read_ADC_Channel
+09B4 1205D1     527            lcall GetTemp
+09B7 C3         528            clr c
+09B8 E541       529            mov a, currentTemp
+09BA B54305     530            cjne a, SoakTemp, NOT_EQL_soak  ; check if equal to set soak temp, if so, proceed to next state
+09BD            531   EQL_soak:
+09BD 0209DF     532            ljmp Forever
+09C0 9541       533            subb a, currentTemp
+09C2            534   ; compare if greater or equal, proceed
+09C2            535   
+09C2            536   NOT_EQL_soak:
+09C2 4003       537            jc A_LESS_soak
+09C4            538   A_GREATER_soak:
+09C4 0209DF     539            ljmp Forever
+09C7            540   A_LESS_soak:
+09C7            541            ;----------------------------------------------------;
+09C7            542            ; Safety feature (if Temp < 50C in first 60s, abort) ;
+09C7            543            ;----------------------------------------------------;
+09C7 C3         544            clr c
+09C8 E541       545            mov a, currentTemp
+09CA 9432       546            subb a, #50
+09CC 9201       547            mov carry_flag, c
+09CE 300107     548            jnb carry_flag, continueS1
+09D1            549   
+09D1 E549       550            mov a,  BCD_counterSec
+09D3 B43C02     551            cjne a, #60, continueS1
+09D6 8003       552            sjmp abortstate1
+09D8            553   continueS1:
+09D8 02099B     554            ljmp State1_RampSoak
+09DB            555   
+09DB            556   ;emergy abort;
+09DB            557    abortstate1:
+09DB D2B7       558    setb toaster_on ; led off
+09DD 80FC       559    sjmp abortstate1
+09DF            560   ;------------------------------------;
+09DF            561   ;        STATE2&4 SOAK AND REFLOW         ;
+09DF            562   ;------------------------------------;
+09DF            563   ; forever loop interface with putty
+09DF            564   Forever:
+09DF            565            ;outputing power = 20%;
+09DF C2B7       566       clr toaster_on ; Led on
+09E1 C002       567            push AR2
+09E3 7A14       567            mov R2, #20
+09E5 120632     567            lcall ?Wait_Micro_Seconds
+09E8 D002       567            pop AR2
+09EA D2B7       568       setb toaster_on ; led off
+09EC C002       569            push AR2
+09EE 7A50       569            mov R2, #80
+09F0 120632     569            lcall ?Wait_Micro_Seconds
+09F3 D002       569            pop AR2
+09F5            570            ;------------------------- TODO ----------------------------;
+09F5            571            ; Check Temperature
+09F5            572            ;-----------------------------------------------------------;
+09F5            573   
+09F5            574   
+09F5            575            ; TIME CHECK
+09F5 20C521     576            jb BOOT_BUTTON, CheckStop  ; buttons to change screen to Clock and Current Temp later
+09F8 C002       577            push AR2
+09FA 7A32       577            mov R2, #50
+09FC 1202EA     577            lcall ?Wait_Milli_Seconds
+09FF D002       577            pop AR2
+0A01 20C515     578            jb BOOT_BUTTON, CheckStop
+0A04 30C5FD     579            jnb BOOT_BUTTON, $
+0A07            580   
+0A07 C2CA       581            clr TR2                 ; Stop timer 2
+0A09 E4         582            clr a
+0A0A F547       583            mov Count1ms+0, a
+0A0C F548       584            mov Count1ms+1, a
+0A0E F549       585            mov BCD_counterSec, a
+0A10 F54A       586            mov BCD_counterMin, a
+0A12 D2CA       587            setb TR2                ; Start timer 2
+0A14            588            
+0A14 020AD0     589            ljmp WriteNum 
+0A17            590   
+0A17            591            ; Do this forever
+0A17 80C6       592            sjmp Forever
+0A19            593            
+0A19            594            ;switch displays instead of loop_a
+0A19            595   CheckStop:
+0A19 20A720     596       jb STARTSTOP_BUTTON, loop_a          ; if stop button not pressed, go loop and check for 00
+0A1C C002       597            push AR2
+0A1E 7A32       597            mov R2, #50
+0A20 1202EA     597            lcall ?Wait_Milli_Seconds
+0A23 D002       597            pop AR2
+0A25 20A714     598       jb STARTSTOP_BUTTON, loop_a
+0A28 30A7FD     599       jnb STARTSTOP_BUTTON, $
+0A2B            600       
+0A2B C2CA       601       clr TR2                 ; Stop timer 2
+0A2D E4         602            clr a
+0A2E F547       603            mov Count1ms+0, a
+0A30 F548       604            mov Count1ms+1, a
+0A32 F549       605            mov BCD_counterSec, a
+0A34            606            
+0A34            607            ;turn off oven;
+0A34 D2B7       608       setb toaster_on ; oven off
+0A36            609            ;-------- TODO ------------------;
+0A36            610            ; Voice feed back Turn off oven
+0A36            611            ;--------------------------------;      
+0A36 02082B     612            ljmp State0_SetupSoak           ; if stop button pressed, go back to setup
+0A39            613            
+0A39            614   ;SwitchDisplays:
+0A39            615   ;        jb MODE_BUTTON, loop_a          ; if stop button not pressed, go loop and check for 00
+0A39            616   ;    Wait_Milli_seconds(#50)
+0A39            617   ;    jb MODE_BUTTON, loop_a
+0A39            618   ;    jnb MODE_BUTTON, $
+0A39            619            
+0A39            620   ;        jb tempdisplay_flag, TimerDisplay
+0A39            621   ;        jnb tempdisplay_flag, TempDisplay
+0A39            622   
+0A39 020A3C     623            ljmp loop_a
+0A3C            624            
+0A3C            625   loop_a:
+0A3C 3002A0     626            jnb half_seconds_flag, Forever ;check if 1 second has passed...
+0A3F            627   loop_b:
+0A3F C202       628       clr half_seconds_flag ; We clear this flag in the main loop, but it is set in the ISR for timer 2
+0A41 E549       629       mov a, BCD_counterSec
+0A43 B49902     630       cjne a, #0x99, goto  ;check to see if sec counter is at 00, skip if not 00
+0A46 8003       631            sjmp skipthecommand
+0A48            632   goto:
+0A48 020AD0     633            ljmp WriteNum   
+0A4B            634   skipthecommand:   
+0A4B 7459       635       mov a, #0x59                         ; if sec at 00, reset to number 59
+0A4D F549       636       mov BCD_counterSec, a
+0A4F            637       
+0A4F E4         638       clr a
+0A50 E54A       639       mov a, BCD_counterMin
+0A52 B4006F     640       cjne a, #0x00, decrementMin  ; check if minutes at 00, if so then stop, else decrement minutes
+0A55            641   TimerDone:               ; if timer done
+0A55 30044B     642            jnb refltimer_done, StartReflTimer              ; if reflow timer not done, start reflow timer
+0A58            643            ;else if refltimer done, finish process
+0A58 C2CA       644            clr TR2                 ; Stop timer 2
+0A5A E4         645            clr a
+0A5B            646            ; reset all settings
+0A5B 754300     647            mov SoakTemp, #0x00
+0A5E 754500     648            mov ReflTemp, #0x00
+0A61 754900     649            mov BCD_counterSec, #0x00
+0A64 754A00     650            mov BCD_counterMin, #0x00
+0A67 754D00     651            mov SoakMinAlarm, #0x00
+0A6A 754E00     652            mov SoakSecAlarm, #0x00
+0A6D 754F00     653            mov ReflMinAlarm, #0x00
+0A70 755000     654            mov ReflSecAlarm, #0x00
+0A73            655            
+0A73 12039A     656            lcall Display_Soak
+0A76 1203D4     657            lcall Display_Refl
+0A79            658            
+0A79            659            ;---------- TODO ---------------------;
+0A79            660            ; Voice feedback Reflow process over
+0A79            661            ;-------------------------------------;
+0A79 02082B     662            ljmp State0_SetupSoak           ; go back to settings
+0A7C            663   
+0A7C            664   ;--------------------------------;
+0A7C            665   ;                STATE3 RAMP REFL             ;
+0A7C            666   ;--------------------------------; 
+0A7C            667   State3_RampRefl:
+0A7C            668            ;------------------------- TODO ----------------------------;
+0A7C            669            ; Check current temperature
+0A7C            670            ;-----------------------------------------------------------;
+0A7C            671            ;outputing power = 100%;
+0A7C C2B7       672       clr toaster_on ; Led on
+0A7E C002       673            push AR2
+0A80 7A63       673            mov R2, #99
+0A82 120632     673            lcall ?Wait_Micro_Seconds
+0A85 D002       673            pop AR2
+0A87 D2B7       674       setb toaster_on ; led off
+0A89 C002       675            push AR2
+0A8B 7A01       675            mov R2, #1
+0A8D 120632     675            lcall ?Wait_Micro_Seconds
+0A90 D002       675            pop AR2
+0A92            676            
+0A92 C3         677            clr c
+0A93 E541       678            mov a, currentTemp
+0A95 B54503     679            cjne a, ReflTemp, NOT_EQL_refl  ; check if equal to set soak temp, if so, proceed to next state
+0A98            680   
+0A98            681            ; compare if greater or equal, proceed
+0A98            682   EQL_refl:
+0A98 020AA3     683            ljmp StartReflTimer
+0A9B            684   NOT_EQL_refl:
+0A9B 4003       685            jc A_LESS_refl
+0A9D            686   A_GREATER_refl:
+0A9D 020AA3     687            ljmp StartReflTimer
+0AA0            688   A_LESS_refl:
+0AA0 020A7C     689            ljmp State3_RampRefl
+0AA3            690            
+0AA3            691   ;---------------------------;
+0AA3            692   ;                STATE4 REFL         ;
+0AA3            693   ;---------------------------; 
+0AA3            694   StartReflTimer:
+0AA3 D204       695            setb refltimer_done                     ; set to indicate final stage in process
+0AA5 854F4A     696            mov BCD_counterMin, ReflMinAlarm
+0AA8 855049     697            mov BCD_counterSec, ReflSecAlarm
+0AAB            698            
+0AAB            699            ;outputing power = 20%;
+0AAB C2B7       700       clr toaster_on ; Led on
+0AAD C002       701            push AR2
+0AAF 7A14       701            mov R2, #20
+0AB1 120632     701            lcall ?Wait_Micro_Seconds
+0AB4 D002       701            pop AR2
+0AB6 D2B7       702       setb toaster_on ; led off
+0AB8 C002       703            push AR2
+0ABA 7A50       703            mov R2, #80
+0ABC 120632     703            lcall ?Wait_Micro_Seconds
+0ABF D002       703            pop AR2
+0AC1            704   
+0AC1            705            ;--------------- TODO ------------------------;
+0AC1            706            ; Voice feedback Soak stage over, start Reflow
+0AC1            707            ;---------------------------------------------;
+0AC1            708            
+0AC1 0209DF     709            ljmp Forever
+0AC4            710            
+0AC4            711   decrementMin:
+0AC4 2499       712       add a, #0x99         ;decrement minute counter
+0AC6 D4         713       da a
+0AC7 F54A       714       mov BCD_counterMin, a
+0AC9 E4         715       clr a
+0ACA            716   bigBCDmincheck:   
+0ACA B40003     717       cjne a, #0x00, WriteNum ;first compare if BCD_counter2 = 00, if so, clear counter
+0ACD E4         718       clr a
+0ACE F54A       719       mov BCD_counterMin, a
+0AD0            720   WriteNum:
+0AD0            721            ;check refltimer_done if update soak or refl time
+0AD0 300403     722            jnb refltimer_done, Display_SoakTimer   ; if in soak stage, update soak display
+0AD3 200429     723            jb refltimer_done, Display_ReflTimer            ; if in refl stage, update refl display
+0AD6            724       ; jumps to Forever after display
+0AD6            725   
+0AD6            726   Display_SoakTimer:
+0AD6 C0E0       727            push acc
+0AD8 740B       727            mov a, #11
+0ADA 14         727            dec a
+0ADB 12037F     727            lcall ?Set_Cursor_1 ; Select column and row
+0ADE D0E0       727            pop acc
+0AE0 C000       728            push ar0
+0AE2 A84A       728            mov r0, BCD_counterMin
+0AE4 120384     728            lcall ?Display_BCD
+0AE7 D000       728            pop ar0
+0AE9 C0E0       729            push acc
+0AEB 740E       729            mov a, #14
+0AED 14         729            dec a
+0AEE 12037F     729            lcall ?Set_Cursor_1 ; Select column and row
+0AF1 D0E0       729            pop acc
+0AF3 C000       730            push ar0
+0AF5 A849       730            mov r0, BCD_counterSec
+0AF7 120384     730            lcall ?Display_BCD
+0AFA D000       730            pop ar0
+0AFC 0209DF     731            ljmp Forever
+0AFF            732   
+0AFF            733   Display_ReflTimer:
+0AFF C0E0       734            push acc
+0B01 740B       734            mov a, #11
+0B03 14         734            dec a
+0B04 12037D     734            lcall ?Set_Cursor_2 ; Select column and row
+0B07 D0E0       734            pop acc
+0B09 C000       735            push ar0
+0B0B A84A       735            mov r0, BCD_counterMin
+0B0D 120384     735            lcall ?Display_BCD
+0B10 D000       735            pop ar0
+0B12 C0E0       736            push acc
+0B14 740E       736            mov a, #14
+0B16 14         736            dec a
+0B17 12037D     736            lcall ?Set_Cursor_2 ; Select column and row
+0B1A D0E0       736            pop acc
+0B1C C000       737            push ar0
+0B1E A849       737            mov r0, BCD_counterSec
+0B20 120384     737            lcall ?Display_BCD
+0B23 D000       737            pop ar0
+0B25 0209DF     738            ljmp Forever
+0B28            739            
+0B28            740   ;---------------------------;
+0B28            741   ;                STATE5 COOLING              ;
+0B28            742   ;---------------------------; 
+0B28            743   State5_Cool:
+0B28            744            ;outputing power = 0%;
+0B28 D2B7       745       setb toaster_on ; led off
+0B2A            746            ;------------------------- TODO ----------------------------;
+0B2A            747            ; Check current temperature
+0B2A            748            ;-----------------------------------------------------------;
+0B2A C3         749            clr c
+0B2B E541       750            mov a, currentTemp
+0B2D B43C03     751            cjne a, #60 , NOT_EQL_cool      ; check if equal to set soak temp, if so, proceed to next state
+0B30            752   
+0B30            753            ; compare if greater or equal, proceed
+0B30            754   EQL_cool:
+0B30 020B28     755            ljmp State5_Cool
+0B33            756   NOT_EQL_cool:
+0B33 4003       757            jc A_LESS_cool
+0B35            758   A_GREATER_cool:
+0B35 020B28     759            ljmp State5_Cool
+0B38            760   A_LESS_cool:
+0B38            761            ; reset all settings
+0B38 754300     762            mov SoakTemp, #0x00
+0B3B 754500     763            mov ReflTemp, #0x00
+0B3E 754900     764            mov BCD_counterSec, #0x00
+0B41 754A00     765            mov BCD_counterMin, #0x00
+0B44 754D00     766            mov SoakMinAlarm, #0x00
+0B47 754E00     767            mov SoakSecAlarm, #0x00
+0B4A 754F00     768            mov ReflMinAlarm, #0x00
+0B4D 755000     769            mov ReflSecAlarm, #0x00
+0B50            770            
+0B50 12039A     771            lcall Display_Soak
+0B53 1203D4     772            lcall Display_Refl
+0B56            773            
+0B56 02082B     774            ljmp State0_SetupSoak   
+0B59            775            
+0B59            776   EN
