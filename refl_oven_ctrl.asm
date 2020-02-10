@@ -22,8 +22,6 @@ CE_ADC EQU P2.0
 MY_MOSI EQU P2.1
 MY_MISO EQU P2.2
 MY_SCLK EQU P2.3
-CE_EE EQU P2.4
-CE_RTC EQU P2.5
 
 BOOT_BUTTON equ P4.5
 SOUND_OUT equ P3.7
@@ -34,6 +32,8 @@ ALSEC_BUTTON   equ P0.6		; Inc seconds
 
 STARTSTOP_BUTTON equ P2.7	; Start/Stop process immediately, Settings
 MODE_BUTTON equ P2.4				; Switch Displays between Clock, Current Temp, Settings/timer
+
+toaster_on EQU P0.0 
 
 ; Reset vector
 org 0x0000
@@ -53,7 +53,7 @@ org 0x0013
 
 ; Timer/Counter 1 overflow interrupt vector (not used in this code)
 org 0x001B
-	reti
+	ljmp 1803H
 
 ; Serial port receive/transmit interrupt vector (not used in this code)
 org 0x0023 
@@ -65,16 +65,9 @@ org 0x002B
 
 ; These register definitions needed by 'math32.inc'
 DSEG at 0x30
-buffer: ds 30
 x:   ds 4
 y:   ds 4
 bcd: ds 5
-
-; THERMOCOUPLE&SENSOR
-LM_Result: ds 2
-TC_Result: ds 1
-temp:ds 2
-LM_TEMP: ds 2
 
 ; TEMPERATURE
 SaveT: ds 4
@@ -125,18 +118,13 @@ $NOLIST
 $include(math32.inc)
 $include(LCD_4bit.inc)
 ;$include (reflproc_FSM.asm)
-;$include(will.inc)
-;$include(tempcheck.inc)
+$include(Blinkymacro.inc)
 $LIST
 
 ; INIT SPI
- ;R0 carries data to transmit, on return R1 holds recieved data
 INIT_SPI:
  	setb MY_MISO ; Make MISO an input pin
  	clr MY_SCLK ; For mode (0,0) SCLK is zero
- 	setb CE_ADC
-	setb CE_EE
-	clr CE_RTC ; RTC CE is active high
  	ret
 DO_SPI_G:
  	push acc
@@ -288,6 +276,8 @@ MainProgram:
     ; In case you decide to use the pins of P0 configure the port in bidirectional mode:
     mov P0M0, #0	;ESSENTIAL!! BUTTONS WILL GO NUTS
     mov P0M1, #0
+	mov	P0M2,#0x00
+    clr toaster_on  
    	
     mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
@@ -454,7 +444,7 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	
 	;------------------------- TODO ----------------------------;
 	; Voice Feedback Soak stage
-	; Set oven to Soak heat
+	; -Set oven to Soak heat- done??
 	;-----------------------------------------------------------;
 	
 	ljmp Forever
@@ -523,35 +513,62 @@ incrementRS:
 ;		STATE1 RAMP SOAK 	     ;
 ;--------------------------------;  
 State1_RampSoak:
-	;------------------------- TODO ----------------------------;
-	; Check current temperature
-	;-----------------------------------------------------------;
+;outputing power = 100%;
+    clr toaster_on ; Led on
+    Wait_Micro_Seconds(#99)
+    setb toaster_on ; led off
+    Wait_Micro_Seconds(#1)
+
+	;--------------------------------------------;
+	; Check current temperature Using Will's code;
+	;--------------------------------------------;
+	lcall Read_ADC_Channel
+	lcall GetTemp
 	clr c
 	mov a, currentTemp
 	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
-; compare if greater or equal, proceed
 EQL_soak:
 	ljmp Forever
+	subb a, currentTemp
+; compare if greater or equal, proceed
+
 NOT_EQL_soak:
 	jc A_LESS_soak
 A_GREATER_soak:
 	ljmp Forever
 A_LESS_soak:
+	;----------------------------------------------------;
+	; Safety feature (if Temp < 50C in first 60s, abort) ;
+	;----------------------------------------------------;
+	clr c
+	mov a, currentTemp
+	subb a, #50
+	jnb c, continueS1
+
+	mov a,	BCD_counterSec
+	cjne a, #60, continueS1
+	sjmp abortstate1
+continueS1:
 	ljmp State1_RampSoak
 
-	;------------------------- TODO -------------------------------;
-	; Implement safety feature (if Temp < 50C in first 60s, abort) ;
-	;--------------------------------------------------------------;
- 
+;emergy abort;
+ abortstate1:
+ setb toaster_on ; led off
+ sjmp abortstate1
 ;------------------------------------;
 ;   	STATE2&4 SOAK AND REFLOW   	 ;
 ;------------------------------------;
 ; forever loop interface with putty
 Forever:
-	
+	;outputing power = 20%;
+    clr toaster_on ; Led on
+    Wait_Micro_Seconds(#20)
+    setb toaster_on ; led off
+    Wait_Micro_Seconds(#80)
 	;------------------------- TODO ----------------------------;
 	; Check Temperature
 	;-----------------------------------------------------------;
+
 
 	; TIME CHECK
 	jb BOOT_BUTTON, CheckStop  ; buttons to change screen to Clock and Current Temp later
@@ -585,10 +602,11 @@ CheckStop:
 	mov Count1ms+1, a
 	mov BCD_counterSec, a
 	
-	;------------------------- TODO ----------------------------;
-	; Turn off oven
+	;turn off oven;
+    setb toaster_on ; oven off
+	;-------- TODO ------------------;
 	; Voice feed back Turn off oven
-	;-----------------------------------------------------------;	
+	;--------------------------------;	
 	ljmp State0_SetupSoak		; if stop button pressed, go back to setup
 	
 ;SwitchDisplays:
@@ -633,10 +651,9 @@ TimerDone:		; if timer done
 	lcall Display_Soak
 	lcall Display_Refl
 	
-	;------------------------- TODO ----------------------------;
-	; Turn off oven temp
+	;---------- TODO ---------------------;
 	; Voice feedback Reflow process over
-	;-----------------------------------------------------------;
+	;-------------------------------------;
 	ljmp State0_SetupSoak		; go back to settings
 
 ;--------------------------------;
@@ -646,6 +663,12 @@ State3_RampRefl:
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
+	;outputing power = 100%;
+    clr toaster_on ; Led on
+    Wait_Micro_Seconds(#99)
+    setb toaster_on ; led off
+    Wait_Micro_Seconds(#1)
+	
 	clr c
 	mov a, currentTemp
 	cjne a, ReflTemp, NOT_EQL_refl	; check if equal to set soak temp, if so, proceed to next state
@@ -668,10 +691,15 @@ StartReflTimer:
 	mov BCD_counterMin, ReflMinAlarm
 	mov BCD_counterSec, ReflSecAlarm
 	
-	;------------------------- TODO --------------------------------------;
-	; Change oven temperature to Reflow
+	;outputing power = 20%;
+    clr toaster_on ; Led on
+    Wait_Micro_Seconds(#20)
+    setb toaster_on ; led off
+    Wait_Micro_Seconds(#80)
+
+	;--------------- TODO ------------------------;
 	; Voice feedback Soak stage over, start Reflow
-	;---------------------------------------------------------------------;
+	;---------------------------------------------;
 	
 	ljmp Forever
 	
@@ -708,6 +736,8 @@ Display_ReflTimer:
 ;		STATE5 COOLING 	    ;
 ;---------------------------; 
 State5_Cool:
+	;outputing power = 0%;
+    setb toaster_on ; led off
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
