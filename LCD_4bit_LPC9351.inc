@@ -306,42 +306,4 @@ TimerDisplay:
 	
 	ljmp Forever
 
-;------------------------------------;
-;   	Temperature Stuff	         ;
-;------------------------------------;
-
-Display_TempC:
-	Set_Cursor(2, 6)
-	Display_BCD(bcd+0)
-	ret
-	
-	GetTemp:
-	mov x, SaveT
-	mov x+1, SaveT+1
-	mov x+2, #0
-	mov x+3, #0
-	
-	; celcius
-	load_y(410)
-	lcall mul32
-	load_y(1023)
-	lcall div32
-	load_y(273)
-	lcall sub32
-
-	lcall hex2bcd
-	lcall Display_TempC
-	
-	mov currentTemp, bcd
-
-	; Check temperature and sound alarm if ...
-	; lcall TempAlarm
-
-SendCelcius:
-	; convert back to celcius, since bcd is in kelvin
-	lcall bcd2hex
-	load_y(273)
-	lcall sub32
-	lcall hex2bcd
-	Display_BCD(bcd)
 	;ret

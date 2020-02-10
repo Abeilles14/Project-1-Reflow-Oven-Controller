@@ -79,7 +79,14 @@ w:	 ds 3
 x:   ds 4
 y:   ds 4
 bcd: ds 5
+buffer: ds 30
 
+; THERMOCOUPLE
+LM_Result: ds 2
+TC_Result: ds 1
+Result: ds 2
+temp:ds 2
+LM_TEMP: ds 2
 ; TEMPERATURE
 SaveT: ds 4
 currentTemp: ds 2	; current temperature from sensor
@@ -131,11 +138,15 @@ _default: DB '00:00',0
 _clearLCD: DB '                ',0
 
 $NOLIST
-$include(math32.inc)
 $include(LCD_4bit_LPC9351.inc)
+$include(math32.inc)
 $include(voice_feedback.asm)
 ;$include (reflproc_FSM.asm)
+;$include(spi.inc)
+;$include(will.inc)
+;$include(tempcheck.inc)
 $LIST
+
 
 ;------------------------------;
 ; 		PORT INIT/CONFIG	   ;
@@ -151,26 +162,6 @@ Ports_Init:
     mov P2M2, #00H
     mov P3M1, #00H
     mov P3M2, #00H
-	ret
-
-;---------------------------------;
-; Sends a byte via serial port    ;
-;---------------------------------;
-putchar:
-	jbc	TI,putchar_L1
-	sjmp putchar
-putchar_L1:
-	mov	SBUF,a
-	ret
-
-;---------------------------------;
-; Receive a byte from serial port ;
-;---------------------------------;
-getchar:
-	jbc	RI,getchar_L1
-	sjmp getchar
-getchar_L1:
-	mov	a,SBUF
 	ret
 
 ; Configure the serial port and baud rate
@@ -588,6 +579,7 @@ incrementRM:
 
 
 CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
+	
 	jb STARTSTOP_BUTTON, State0_SetupRefl
     Wait_Milli_seconds(#50)
     jb STARTSTOP_BUTTON, State0_SetupRefl
@@ -634,7 +626,10 @@ incrementRS:
 ;		STATE1 RAMP SOAK 	     ;
 ;--------------------------------; 
 ;State1_RampSoak:
-;	jb MODE_BUTTON, SwitchDisplay_S1		; if stop button not pressed, go loop and check for 00
+;	 lcall ReadTemp
+;	 mov currentTemp, Result
+;	 
+;	 jb MODE_BUTTON, SwitchDisplay_S1		; if stop button not pressed, go loop and check for 00
 ;    Wait_Milli_seconds(#50)
 ;    jb MODE_BUTTON, SwitchDisplay_S1
 ;    jnb MODE_BUTTON, $
@@ -682,6 +677,8 @@ TimerDisplayJmp:
 Forever:
 	;------------------------- TODO ----------------------------;
 	; Check Temperature
+;	 lcall ReadTemp
+;	 mov currentTemp, Result
 	;-----------------------------------------------------------;
 	; Voice Feedback
 	lcall T2S_FSM		; Run the state machine that plays minutes:seconds
@@ -774,13 +771,15 @@ TimerDone:		; if timer done
 	; Turn off oven temp
 	;-----------------------------------------------------------;
 	
-	ljmp State0_SetupSoak		; go back to settings
+	ljmp State0_SetupSoak		; go to Cool state later
 
 ;--------------------------------;
 ;		STATE3 RAMP REFL 	     ;
 ;--------------------------------;
 ;State3_RampRefl:
-;	jb MODE_BUTTON, SwitchDisplay_S3		; if stop button not pressed, go loop and check for 00
+;	 lcall ReadTemp
+;	 mov currentTemp, Result
+;	 jb MODE_BUTTON, SwitchDisplay_S3		; if stop button not pressed, go loop and check for 00
 ;    Wait_Milli_seconds(#50)
 ;    jb MODE_BUTTON, SwitchDisplay_S3
 ;    jnb MODE_BUTTON, $
@@ -825,4 +824,47 @@ StartReflTimer:
 	
 	ljmp Forever
 
+;---------------------------;
+;		STATE5 COOLING 	    ;
+;---------------------------; 
+;State5_Cool:
+;	 lcall ReadTemp
+;	 mov currentTemp, Result
+
+;	 jb MODE_BUTTON, SwitchDisplay_S5		; if stop button not pressed, go loop and check for 00
+;    Wait_Milli_seconds(#50)
+;    jb MODE_BUTTON, SwitchDisplay_S5
+;    jnb MODE_BUTTON, $
+
+;SwitchDisplay_S5:
+	;------------------------- TODO ----------------------------;
+	; Check current temperature
+	;-----------------------------------------------------------;
+;	mov Power, #0x00	;power at 100%
+;	clr c
+;	mov a, currentTemp
+;	cjne a, #60 , NOT_EQL_cool	; check if equal to set soak temp, if so, proceed to next state
+
+	; compare if greater or equal, proceed
+;EQL_cool:
+;	ljmp State5_Cool
+;NOT_EQL_cool:
+;	jc A_LESS_cool
+;A_GREATER_cool:
+;	ljmp State5_Cool
+;A_LESS_cool:
+	; reset all settings
+;	mov SoakTemp, #0x00
+;  	mov ReflTemp, #0x00
+;	mov BCD_counterSec, #0x00
+;	mov BCD_counterMin, #0x00
+;	mov SoakMinAlarm, #0x00
+;	mov SoakSecAlarm, #0x00
+;	mov ReflMinAlarm, #0x00
+;	mov ReflSecAlarm, #0x00
+	
+;	lcall Display_Soak
+;	lcall Display_Refl
+	
+;	ljmp State0_SetupSoak	
 END
