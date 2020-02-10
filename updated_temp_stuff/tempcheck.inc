@@ -10,17 +10,18 @@ ReadTemp:
 	lcall ReadVolts
 	ret
 ReadVolts:
-	lcall ReadChannel0;Read Cold Junction Temp voltage with LM335
+	lcall Read_Channel0;Read Cold Junction Temp voltage with LM335
 	mov LM_Result+0,R6 ;Move Result into LM_Result
 	mov LM_Result+1,R7
 	lcall Average_Channel1 ;Read average of voltage from ThermoCouple
 	mov TC_Result,x+0		;Move Result into TC_Result
 	;lcall Wait_Sec
-	lcall Do_Something_With_Result
+	lcall TC_To_Python
 	ret
 
 
-Do_Something_With_Result:
+; Send Thermocouple to Python
+TC_To_Python:
 push acc
 clr a
 mov buffer+0,a

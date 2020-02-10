@@ -9,7 +9,7 @@ import kconvert
 xsize=150
 
 ser = serial.Serial(
- port='COM3',
+ port='COM11',
  baudrate=115200,
  parity=serial.PARITY_NONE,
  stopbits=serial.STOPBITS_ONE,

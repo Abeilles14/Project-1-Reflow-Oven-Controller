@@ -1,4 +1,7 @@
-$MODLP51
+$NOLIST
+$MOD9351
+$LIST
+
 org 0000H
 ljmp MainProgram
 
@@ -25,7 +28,6 @@ WRITE_STATUS     EQU 0x01  ; Address:0 Dummy:0 Num:1
 WRITE_BYTES      EQU 0x02  ; Address:3 Dummy:0 Num:1 to 256
 ERASE_ALL        EQU 0xc7  ; Address:0 Dummy:0 Num:0
 ERASE_BLOCK      EQU 0xd8  ; Address:3 Dummy:0 Num:0
-READ_DEVICE_ID   EQU 0x9f  ; Address:0 Dummy:2 Num:1 to infinite
 
 CSEG
 ; These 'equ' must match the wiring between the microcontroller and the LCD!

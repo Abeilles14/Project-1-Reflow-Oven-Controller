@@ -32,7 +32,7 @@ Sum_Loop1:
 	mov y+3,#0
 	mov y+2,#0
 	mov y+1,#0
-	mov y+0, AD0DAT0
+	mov y+0, AD0DAT1
 	mov y+0,R6
 	lcall add32
 	lcall Wait10us
