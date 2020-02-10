@@ -9,6 +9,9 @@ CCU_RELOAD  EQU ((65536-((CLK/(2*CCU_RATE)))))
 BAUD        EQU 115200
 BRVAL       EQU ((CLK/BAUD)-16)
 
+TIMER1_RATE   EQU 200     ; 200Hz, for a timer tick of 5ms
+TIMER1_RELOAD EQU ((65536-(CLK/(2*TIMER1_RATE))))
+
 ; PINS INPUT OUTPUTS
 FLASH_CE EQU P2.4
 MY_MOSI EQU P2.2
@@ -18,11 +21,11 @@ MY_SCLK EQU P2.5
 SOUND_OUT equ P2.7
 
 ;Buttons
-BOOT_BUTTON equ P2.0
+BOOT_BUTTON equ P2.6
 
-TEMP_BUTTON  equ P0.1		; Inc temperature
+TEMP_BUTTON  equ P0.2		; Inc temperature
 ALMIN_BUTTON  equ P0.3	; Inc minutes
-ALSEC_BUTTON   equ P0.2		; Inc seconds
+ALSEC_BUTTON   equ P0.1		; Inc seconds
 
 STARTSTOP_BUTTON equ P3.0	; Start/Stop process immediately, Settings
 MODE_BUTTON equ P3.1		; Switch Displays between Clock, Current Temp, Settings/timer
@@ -60,15 +63,15 @@ org 0x0013
 
 ; Timer/Counter 1 overflow interrupt vector (not used in this code)
 org 0x001B
-	reti
+	ljmp Timer1_ISR
 
 ; Serial port receive/transmit interrupt vector (not used in this code)
 org 0x0023 
 	reti
 	
 ; Timer/Counter 2 overflow interrupt vector
-org 0x002B
-	ljmp Timer2_ISR
+org 0x005B
+	ljmp CCU_ISR
 
 ; These register definitions needed by 'math32.inc'
 DSEG at 0x30
@@ -83,6 +86,7 @@ currentTemp: ds 2	; current temperature from sensor
 SoakTemp: ds 2		; set soak temperature
 ReflTemp: ds 2		; set refl temperature
 ; TIMER COUNTERS	; contains counters and timers
+Count5ms: ds 1
 Count1ms: ds 2 		; Used to determine when (1) second has passed
 BCD_counterSec: ds 1
 BCD_counterMin: ds 1
@@ -320,92 +324,62 @@ crc16 mac
 	;ret
 endmac
 
-;---------------------------------;
-; High constants for CRC-CCITT    ;
-; (XModem) Polynomial:            ;
-; x^16 + x^12 + x^5 + 1 (0x1021)  ;
-;---------------------------------;
-CRC16_TH:
-	db	000h, 010h, 020h, 030h, 040h, 050h, 060h, 070h
-	db	081h, 091h, 0A1h, 0B1h, 0C1h, 0D1h, 0E1h, 0F1h
-	db	012h, 002h, 032h, 022h, 052h, 042h, 072h, 062h
-	db	093h, 083h, 0B3h, 0A3h, 0D3h, 0C3h, 0F3h, 0E3h
-	db	024h, 034h, 004h, 014h, 064h, 074h, 044h, 054h
-	db	0A5h, 0B5h, 085h, 095h, 0E5h, 0F5h, 0C5h, 0D5h
-	db	036h, 026h, 016h, 006h, 076h, 066h, 056h, 046h
-	db	0B7h, 0A7h, 097h, 087h, 0F7h, 0E7h, 0D7h, 0C7h
-	db	048h, 058h, 068h, 078h, 008h, 018h, 028h, 038h
-	db	0C9h, 0D9h, 0E9h, 0F9h, 089h, 099h, 0A9h, 0B9h
-	db	05Ah, 04Ah, 07Ah, 06Ah, 01Ah, 00Ah, 03Ah, 02Ah
-	db	0DBh, 0CBh, 0FBh, 0EBh, 09Bh, 08Bh, 0BBh, 0ABh
-	db	06Ch, 07Ch, 04Ch, 05Ch, 02Ch, 03Ch, 00Ch, 01Ch
-	db	0EDh, 0FDh, 0CDh, 0DDh, 0ADh, 0BDh, 08Dh, 09Dh
-	db	07Eh, 06Eh, 05Eh, 04Eh, 03Eh, 02Eh, 01Eh, 00Eh
-	db	0FFh, 0EFh, 0DFh, 0CFh, 0BFh, 0AFh, 09Fh, 08Fh
-	db	091h, 081h, 0B1h, 0A1h, 0D1h, 0C1h, 0F1h, 0E1h
-	db	010h, 000h, 030h, 020h, 050h, 040h, 070h, 060h
-	db	083h, 093h, 0A3h, 0B3h, 0C3h, 0D3h, 0E3h, 0F3h
-	db	002h, 012h, 022h, 032h, 042h, 052h, 062h, 072h
-	db	0B5h, 0A5h, 095h, 085h, 0F5h, 0E5h, 0D5h, 0C5h
-	db	034h, 024h, 014h, 004h, 074h, 064h, 054h, 044h
-	db	0A7h, 0B7h, 087h, 097h, 0E7h, 0F7h, 0C7h, 0D7h
-	db	026h, 036h, 006h, 016h, 066h, 076h, 046h, 056h
-	db	0D9h, 0C9h, 0F9h, 0E9h, 099h, 089h, 0B9h, 0A9h
-	db	058h, 048h, 078h, 068h, 018h, 008h, 038h, 028h
-	db	0CBh, 0DBh, 0EBh, 0FBh, 08Bh, 09Bh, 0ABh, 0BBh
-	db	04Ah, 05Ah, 06Ah, 07Ah, 00Ah, 01Ah, 02Ah, 03Ah
-	db	0FDh, 0EDh, 0DDh, 0CDh, 0BDh, 0ADh, 09Dh, 08Dh
-	db	07Ch, 06Ch, 05Ch, 04Ch, 03Ch, 02Ch, 01Ch, 00Ch
-	db	0EFh, 0FFh, 0CFh, 0DFh, 0AFh, 0BFh, 08Fh, 09Fh
-	db	06Eh, 07Eh, 04Eh, 05Eh, 02Eh, 03Eh, 00Eh, 01Eh
-
-;---------------------------------;
-; Low constants for CRC-CCITT     ;
-; (XModem) Polynomial:            ;
-; x^16 + x^12 + x^5 + 1 (0x1021)  ;
-;---------------------------------;
-CRC16_TL:
-	db	000h, 021h, 042h, 063h, 084h, 0A5h, 0C6h, 0E7h
-	db	008h, 029h, 04Ah, 06Bh, 08Ch, 0ADh, 0CEh, 0EFh
-	db	031h, 010h, 073h, 052h, 0B5h, 094h, 0F7h, 0D6h
-	db	039h, 018h, 07Bh, 05Ah, 0BDh, 09Ch, 0FFh, 0DEh
-	db	062h, 043h, 020h, 001h, 0E6h, 0C7h, 0A4h, 085h
-	db	06Ah, 04Bh, 028h, 009h, 0EEh, 0CFh, 0ACh, 08Dh
-	db	053h, 072h, 011h, 030h, 0D7h, 0F6h, 095h, 0B4h
-	db	05Bh, 07Ah, 019h, 038h, 0DFh, 0FEh, 09Dh, 0BCh
-	db	0C4h, 0E5h, 086h, 0A7h, 040h, 061h, 002h, 023h
-	db	0CCh, 0EDh, 08Eh, 0AFh, 048h, 069h, 00Ah, 02Bh
-	db	0F5h, 0D4h, 0B7h, 096h, 071h, 050h, 033h, 012h
-	db	0FDh, 0DCh, 0BFh, 09Eh, 079h, 058h, 03Bh, 01Ah
-	db	0A6h, 087h, 0E4h, 0C5h, 022h, 003h, 060h, 041h
-	db	0AEh, 08Fh, 0ECh, 0CDh, 02Ah, 00Bh, 068h, 049h
-	db	097h, 0B6h, 0D5h, 0F4h, 013h, 032h, 051h, 070h
-	db	09Fh, 0BEh, 0DDh, 0FCh, 01Bh, 03Ah, 059h, 078h
-	db	088h, 0A9h, 0CAh, 0EBh, 00Ch, 02Dh, 04Eh, 06Fh
-	db	080h, 0A1h, 0C2h, 0E3h, 004h, 025h, 046h, 067h
-	db	0B9h, 098h, 0FBh, 0DAh, 03Dh, 01Ch, 07Fh, 05Eh
-	db	0B1h, 090h, 0F3h, 0D2h, 035h, 014h, 077h, 056h
-	db	0EAh, 0CBh, 0A8h, 089h, 06Eh, 04Fh, 02Ch, 00Dh
-	db	0E2h, 0C3h, 0A0h, 081h, 066h, 047h, 024h, 005h
-	db	0DBh, 0FAh, 099h, 0B8h, 05Fh, 07Eh, 01Dh, 03Ch
-	db	0D3h, 0F2h, 091h, 0B0h, 057h, 076h, 015h, 034h
-	db	04Ch, 06Dh, 00Eh, 02Fh, 0C8h, 0E9h, 08Ah, 0ABh
-	db	044h, 065h, 006h, 027h, 0C0h, 0E1h, 082h, 0A3h
-	db	07Dh, 05Ch, 03Fh, 01Eh, 0F9h, 0D8h, 0BBh, 09Ah
-	db	075h, 054h, 037h, 016h, 0F1h, 0D0h, 0B3h, 092h
-	db	02Eh, 00Fh, 06Ch, 04Dh, 0AAh, 08Bh, 0E8h, 0C9h
-	db	026h, 007h, 064h, 045h, 0A2h, 083h, 0E0h, 0C1h
-	db	01Fh, 03Eh, 05Dh, 07Ch, 09Bh, 0BAh, 0D9h, 0F8h
-	db	017h, 036h, 055h, 074h, 093h, 0B2h, 0D1h, 0F0h
-
-
 EX1_ISR:
    clr ECCU
    reti
 
 ;---------------------------------;
-; Routine to initialize the ISR   ;
-; for the CCU                     ;
+; ISR for timer 1                 ;
+;---------------------------------;
+Timer1_ISR:
+	mov TH1, #high(TIMER1_RELOAD)
+	mov TL1, #low(TIMER1_RELOAD)
+	
+	; The two registers used in the ISR must be saved in the stack
+	push acc
+	push psw
+	
+	; Increment the 8-bit 5-mili-second counter
+	inc Count5ms
+
+Inc_Done:
+	; Check if half second has passed
+	mov a, Count5ms
+	cjne a, #200, Timer1_ISR_done ; Warning: this instruction changes the carry flag!
+	
+	; 1000 milliseconds have passed.  Set a flag so the main program knows
+	setb half_seconds_flag ; Let the main program know half second had passed
+	; Reset to zero the 5-milli-seconds counter, it is a 8-bit variable
+	mov Count5ms, #0
+	; Increment minutes and seconds
+	mov a , BCD_counterSec
+	add a, #0x99
+	da a
+	mov BCD_counterSec, a
+	
+	mov a, BCD_counterSec
+	cjne a, #60, Timer1_ISR_done
+	mov BCD_counterSec, #0
+	
+	mov a , BCD_counterMin
+	add a, #0x99
+	da a
+	mov BCD_counterMin, a
+	mov a, BCD_counterMin
+	cjne a, #60, Timer1_ISR_done
+	mov BCD_counterMin, #0
+	
+Timer1_ISR_done:
+	pop psw
+	pop acc
+	reti
+
+
+;---------------------------------;
+; Routine to initialize the CCU.  ;
+; We are using the CCU timer in a ;
+; manner similar to the timer 2   ;
+; available in other 8051s        ;
 ;---------------------------------;
 CCU_Init:
 	mov TH2, #high(CCU_RELOAD)
@@ -419,53 +393,48 @@ CCU_Init:
 	ret
 
 ;---------------------------------;
-; ISR for timer 2                 ;
+; ISR for CCU.  Used to playback  ;
+; the WAV file stored in the SPI  ;
+; flash memory.                   ;
 ;---------------------------------;
-Timer2_ISR:
+CCU_ISR:
 	mov TIFR2, #0 ; Clear CCU Timer Overflow Interrupt Flag bit. Actually, it clears all the bits!
-	setb P2.6
 	
-	; The two registers used in the ISR must be saved in the stack
+	; The registers used in the ISR must be saved in the stack
 	push acc
 	push psw
 	
-	; Increment the 16-bit one mili second counter
-	inc Count1ms+0    ; Increment the low 8-bits first
-	mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
-	jnz Inc_Done
-	inc Count1ms+1  
-    
-    Inc_Done:
-	; Check if half second has passed
-	mov a, Count1ms+0
-	cjne a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
-	mov a, Count1ms+1
-	cjne a, #high(1000), Timer2_ISR_done
+	; Check if the play counter is zero.  If so, stop playing sound.
+	mov a, w+0
+	orl a, w+1
+	orl a, w+2
+	jz stop_playing
 	
-	; 500 milliseconds have passed.  Set a flag so the main program knows
-	setb half_seconds_flag ; Let the main program know half second had passed
-	cpl TR0 ; Enable/disable timer/counter 0. This line creates a beep-silence-beep-silence sound.
-	; Reset to zero the milli-seconds counter, it is a 16-bit variable
-	clr a
-	mov Count1ms+0, a
-	mov Count1ms+1, a
-	; Decrement the BCD counter
-	mov a, BCD_counterSec
-	sjmp Timer2_ISR_decrement		; jump to decrement counter
-;    jnb ALSEC_BUTTON, Timer2_ISR_decrement
-;	add a, #0x01
-	sjmp Timer2_ISR_da
-Timer2_ISR_decrement:
-	add a, #0x99 ; Adding the 10-complement of -1 is like subtracting 1.
-Timer2_ISR_da:
-	da a ; Decimal adjust instruction.  Check datasheet for more details!
-	mov BCD_counterSec, a
+	; Decrement play counter 'w'.  In this implementation 'w' is a 24-bit counter.
+	mov a, #0xff
+	dec w+0
+	cjne a, w+0, keep_playing
+	dec w+1
+	cjne a, w+1, keep_playing
+	dec w+2
 	
-Timer2_ISR_done:
+keep_playing:
+
+	lcall Send_SPI ; Read the next byte from the SPI Flash...
+	mov AD1DAT3, a ; and send it to the DAC
+	
+	sjmp CCU_ISR_Done
+
+stop_playing:
+	clr TMOD20 ; Stop CCU timer
+	setb FLASH_CE  ; Disable SPI Flash
+	clr SOUND_OUT ; Turn speaker off
+
+CCU_ISR_Done:	
 	pop psw
 	pop acc
 	reti
-    
+
 ;----------------------;
 ;    MAIN PROGRAM      ;
 ;----------------------;
@@ -527,6 +496,7 @@ MainProgram:
 	Display_BCD(BCD_counterMin); 
 	Set_Cursor(2, 11)     ; the place in the LCD where we want the BCD counter value
 	Display_BCD(BCD_counterSec);
+	
 	ljmp SetupSoak			; sets up all soak temp, time, refl temp, time before counter start
 
 ;-----------------------------;
@@ -534,13 +504,14 @@ MainProgram:
 ;-----------------------------;
 ;--------- SETUP SOAK ---------;
 SetupSoak:
+
 	jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
 	Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
 	jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
 	jnb BOOT_BUTTON, $
 	
 	;Make LCD screen blink??
-	
+
 	clr a					; clear all settings
 	mov SoakTemp, a
 	mov SoakMinAlarm, a
@@ -561,6 +532,9 @@ SetSoakTemp:
     Wait_Milli_seconds(#50)
     jb TEMP_BUTTON, SetSoakMin
     jnb TEMP_BUTTON, $
+    
+	setb P0.0
+
     ; increment Soak temp
 	mov a, SoakTemp
 	add a, #0x01
@@ -640,7 +614,7 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
     jnb STARTSTOP_BUTTON, $
     
 	setb half_seconds_flag		; pressed to exit settings and start timer
-	setb ECCU
+	setb TR1
 	
 	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
 	mov BCD_counterSec, SoakSecAlarm
@@ -724,13 +698,13 @@ Forever:
 	jb BOOT_BUTTON, CheckStop
 	jnb BOOT_BUTTON, $
 
-	clr ECCU                 ; Stop timer 2
+	clr TR1                 ; Stop timer 2
 	clr a
 	mov Count1ms+0, a
 	mov Count1ms+1, a
 	mov BCD_counterSec, a
 	mov BCD_counterMin, a
-	setb ECCU                ; Start timer 2
+	setb TR1                ; Start timer 2
 	
 	ljmp WriteNum 
 
@@ -744,7 +718,7 @@ CheckStop:
     jb STARTSTOP_BUTTON, loop_a
     jnb STARTSTOP_BUTTON, $
     
-    clr ECCU                 ; Stop timer 2
+    clr TR1                 ; Stop timer 2
 	clr a
 	mov Count1ms+0, a
 	mov Count1ms+1, a
@@ -768,7 +742,7 @@ loop_b:
 TimerDone:		; if timer done
 	jnb refltimer_done, StartReflTimer		; if reflow timer not done, start reflow timer
 	;else if refltimer done, finish process
-	clr ECCU                 ; Stop timer 2
+	clr TR1                 ; Stop timer 2
 	clr a	
 	ljmp SetupSoak		; go back to settings
 	
