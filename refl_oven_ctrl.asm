@@ -22,6 +22,8 @@ CE_ADC EQU P2.0
 MY_MOSI EQU P2.1
 MY_MISO EQU P2.2
 MY_SCLK EQU P2.3
+CE_EE EQU P2.4
+CE_RTC EQU P2.5
 
 BOOT_BUTTON equ P4.5
 SOUND_OUT equ P3.7
@@ -63,9 +65,16 @@ org 0x002B
 
 ; These register definitions needed by 'math32.inc'
 DSEG at 0x30
+buffer: ds 30
 x:   ds 4
 y:   ds 4
 bcd: ds 5
+
+; THERMOCOUPLE&SENSOR
+LM_Result: ds 2
+TC_Result: ds 1
+temp:ds 2
+LM_TEMP: ds 2
 
 ; TEMPERATURE
 SaveT: ds 4
@@ -116,12 +125,18 @@ $NOLIST
 $include(math32.inc)
 $include(LCD_4bit.inc)
 ;$include (reflproc_FSM.asm)
+;$include(will.inc)
+;$include(tempcheck.inc)
 $LIST
 
 ; INIT SPI
+ ;R0 carries data to transmit, on return R1 holds recieved data
 INIT_SPI:
  	setb MY_MISO ; Make MISO an input pin
  	clr MY_SCLK ; For mode (0,0) SCLK is zero
+ 	setb CE_ADC
+	setb CE_EE
+	clr CE_RTC ; RTC CE is active high
  	ret
 DO_SPI_G:
  	push acc

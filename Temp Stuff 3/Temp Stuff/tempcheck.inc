@@ -98,22 +98,25 @@ mov y+2,a
 mov y+3,a
 mov y+4,a
 lcall add32
+mov Result+0,x+0
+mov Result+1,x+1
 lcall hex2bcd
 
-Set_cursor (1,1) ;print to the lcd
-Display_BCD(bcd+1)
-Display_BCD(bcd+0)
-WriteData(#'C')
+;Set_cursor (1,1) ;print to the lcd
+;Display_BCD(bcd+1)
+;Display_BCD(bcd+0)
+;WriteData(#'C')
+
+
+;lcall bcd2hex	;convert final temperature into hex and store int Result
+;mov Result+0,x+0
+;mov Result+1,x+1
 clr a
 mov buffer+0,a	;clear buffer
 mov buffer+1,a
 mov buffer+2,a
 mov buffer+3,a
 mov buffer+4,a
-
-lcall bcd2hex	;convert final temperature into hex and store int Result
-mov Result+0,bcd+0
-mov Result+1,bcd+1
 
 pop acc
 ret

@@ -37,19 +37,6 @@ L1: djnz R0, L1 ; 3 cycles->3*45.21123ns*166=22.51519us
     pop AR1
     pop AR0
     ret
-
-;---------------------------------;
-; 	  Wait HalfSecond         ;
-;---------------------------------;
-
-WaitHalfSec:
-    mov R2, #89
-L6: mov R1, #250
-L5: mov R0, #166
-L4: djnz R0, L6 ; 3 cycles->3*45.21123ns*166=22.51519us
-    djnz R1, L5 ; 22.51519us*250=5.629ms
-    djnz R2, L4 ; 5.629ms*89=0.5s (approximately)
-    ret
 	
 ;---------------------------------;
 ; Toggles the 'E' pin in the LCD  ;
@@ -205,166 +192,13 @@ endmac
 	ret
 
 ;------------------------------------;
-;   	  Display on LCD             ;
+; Display a char in the LCD          ;
 ;------------------------------------;
+Display_char mac
+	push acc
+	mov a, %0
+	lcall ?WriteData
+	pop acc
+endmac
 
-Display_Soak:
-	Set_Cursor(1, 7)
-	Display_BCD(SoakTemp)
-	Set_Cursor(1, 11)
-	Display_BCD(SoakMinAlarm)
-	Set_Cursor(1, 14)
-	Display_BCD(SoakSecAlarm)
-	ret
-
-Display_Refl:
-	Set_Cursor(2, 7)
-	Display_BCD(ReflTemp)
-	Set_Cursor(2, 11)
-	Display_BCD(ReflMinAlarm)
-	Set_Cursor(2, 14)
-	Display_BCD(ReflSecAlarm)
-	ret
-
-;------------------------------------;
-;   		Displays	     ;
-;------------------------------------;
-;--------- show current temperature ----------;
-TempDisplay:
-	setb tempdisplay_flag
-	
-	Set_Cursor(1,1)
-	Send_Constant_String(#_clearLCD)
-	Set_Cursor(1,2)
-	Send_Constant_String(#_clearLCD)
-
-	Set_Cursor(1,1)
-	Send_Constant_String(#_Temperature_LCD)
-	Set_Cursor(1,6)
-	Display_BCD(currentTemp)
-	
-	ljmp loop_a
-
-
-;--------- show current soak/refl process ---------;
-TimerDisplay:
-	clr tempdisplay_flag
-
-	Set_Cursor(1,1)
-	Send_Constant_String(#_clearLCD)
-	Set_Cursor(1,2)
-	Send_Constant_String(#_clearLCD)
-
-    	Set_Cursor(1,1)
-	Send_Constant_String(#_Soak)
-	Set_Cursor(1,6)
-	Send_Constant_String(#_C)
-	Set_Cursor(1,10)
-	Send_Constant_String(#_blank)
-	Set_Cursor(1,11)
-	Send_Constant_String(#_default)
-	
-	Set_Cursor(2,1)
-	Send_Constant_String(#_Refl)
-	Set_Cursor(2,6)
-	Send_Constant_String(#_C)
-	Set_Cursor(2,10)
-	Send_Constant_String(#_blank)
-	Set_Cursor(2,11)
-	Send_Constant_String(#_default)
-
-	lcall Display_Soak
-	lcall Display_Refl
-	
-	ljmp loop_a
-
-
-;----------------------------------------;
-;   	Checking Equal or greater	 ;
-;----------------------------------------;
-;------------- Soak Temp ----------------;
-
-	
-;------------- Refl Temp ----------------;
-
-
-;------------------------------------;
-;   	Temperature Stuff	     ;
-;------------------------------------;
-
-Display_TempC:
-	Set_Cursor(2, 6)
-	Display_BCD(bcd+0)
-	ret
-	
-Read_ADC_Channel:
-	clr CE_ADC
-	mov R0, #00000001B 	; start at b1
-	lcall DO_SPI_G
-	mov a, b
-	swap a
-	anl a, #0F0H
-	setb acc.7 		; set onsingle mode (bit 7)
-	mov R0, a
-
-	lcall DO_SPI_G
-	mov a, R1 			; R1 bits 8 9
-	anl a, #00000011B 		; last 2 sig bits
-	mov R7, a 				; save high.
-	mov R0, #55H 		; don't care
-	lcall DO_SPI_G
-	mov a, R1 		; R1 bits 0-7 save low
-	mov R6, a ; R1 contains bits 0 to 7. Save result low.
-	setb CE_ADC
-	ret
-	
-GetTemp:
-	mov x, SaveT
-	mov x+1, SaveT+1
-	mov x+2, #0
-	mov x+3, #0
-	
-	; celcius
-	load_y(410)
-	lcall mul32
-	load_y(1023)
-	lcall div32
-	load_y(273)
-	lcall sub32
-
-	lcall hex2bcd
-	lcall Display_TempC
-	
-	mov currentTemp, bcd
-
-	; Check temperature and sound alarm if ...
-	; lcall TempAlarm
-
-SendCelcius:
-	; convert back to celcius, since bcd is in kelvin
-	lcall bcd2hex
-	load_y(273)
-	lcall sub32
-	lcall hex2bcd
-	Display_BCD(bcd)
-	ret
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
 	

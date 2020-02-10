@@ -13,7 +13,7 @@ MY_SCLK EQU P2.3
 CE_EE EQU p2.4
 CE_RTC EQU p2.5
 
-DSEG at 0x30
+dseg at 0x30
 buffer: ds 30
 x:   ds 4
 y:   ds 4
@@ -48,7 +48,13 @@ lcall INIT_SPI
 lcall LCD_4BIT
 forever:
 lcall ReadTemp
+mov x+0,Result+0
+mov x+1,Result+0
+lcall hex2bcd
+Set_cursor (1,1) ;print to the lcd
+Display_BCD(bcd+1)
+Display_BCD(bcd+0)
+WriteData(#'C')
 lcall Wait_Sec
 sjmp forever
-
 END
