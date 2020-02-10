@@ -2,38 +2,33 @@ $NOLIST
 $MOD9351
 $LIST
 
-; INTERRUPTS
-TIMER0_RELOAD_L DATA 0xf2
-TIMER1_RELOAD_L DATA 0xf3
-TIMER0_RELOAD_H DATA 0xf4
-TIMER1_RELOAD_H DATA 0xf5
-
 ;DECLARATIONS
-CLK           EQU 22118400 ; Microcontroller system crystal frequency in Hz
-TIMER0_RATE   EQU 4096     ; 2048Hz squarewave (peak amplitude of CEM-1203 speaker)
-TIMER0_RELOAD EQU ((65536-(CLK/TIMER0_RATE)))
-TIMER2_RATE   EQU 1000     ; 1000Hz, for a timer tick of 1ms
-TIMER2_RELOAD EQU ((65536-(CLK/TIMER2_RATE)))
-BAUD equ 115200
-BRG_VAL equ (0x100-(CLK/(16*BAUD)))
+CLK         EQU 14746000  ; Microcontroller system clock frequency in Hz
+CCU_RATE    EQU 22050     ; 22050Hz is the sampling rate of the wav file we are playing
+CCU_RELOAD  EQU ((65536-((CLK/(2*CCU_RATE)))))
+BAUD        EQU 115200
+BRVAL       EQU ((CLK/BAUD)-16)
+
+TIMER1_RATE   EQU 200     ; 200Hz, for a timer tick of 5ms
+TIMER1_RELOAD EQU ((65536-(CLK/(2*TIMER1_RATE))))
 
 ; PINS INPUT OUTPUTS
-CE_ADC EQU P2.0
-MY_MOSI EQU P2.1
-MY_MISO EQU P2.2
-MY_SCLK EQU P2.3
-CE_EE EQU P2.4
-CE_RTC EQU P2.5
+FLASH_CE EQU P2.4
+MY_MOSI EQU P2.2
+MY_MISO EQU P2.3
+MY_SCLK EQU P2.5
 
-BOOT_BUTTON equ P4.5
-SOUND_OUT equ P3.7
+SOUND equ P2.7
 
-TEMP_BUTTON  equ P0.0		; Inc temperature
-ALMIN_BUTTON  equ P0.3		; Inc minutes
-ALSEC_BUTTON   equ P0.6		; Inc seconds
+;Buttons
+BOOT_BUTTON equ P2.6
 
-STARTSTOP_BUTTON equ P2.7	; Start/Stop process immediately, Settings
-MODE_BUTTON equ P2.4				; Switch Displays between Clock, Current Temp, Settings/timer
+TEMP_BUTTON  equ P0.2		; Inc temperature
+ALMIN_BUTTON  equ P0.3	; Inc minutes
+ALSEC_BUTTON   equ P0.1		; Inc seconds
+
+STARTSTOP_BUTTON equ P3.0	; Start/Stop process immediately, Settings
+MODE_BUTTON equ P3.1		; Switch Displays between Clock, Current Temp, Settings/timer
 
 ; Commands supported by the SPI flash memory according to the datasheet
 WRITE_ENABLE     EQU 0x06  ; Address:0 Dummy:0 Num:0
@@ -60,7 +55,7 @@ org 0x0003
 
 ; Timer/Counter 0 overflow interrupt vector
 org 0x000B
-	ljmp Timer0_ISR
+	reti
 
 ; External interrupt 1 vector (not used in this code)
 org 0x0013
@@ -68,45 +63,32 @@ org 0x0013
 
 ; Timer/Counter 1 overflow interrupt vector (not used in this code)
 org 0x001B
-	reti
+	ljmp Timer1_ISR
 
 ; Serial port receive/transmit interrupt vector (not used in this code)
 org 0x0023 
 	reti
 	
 ; Timer/Counter 2 overflow interrupt vector
-org 0x002B
-	ljmp Timer2_ISR
+org 0x005B
+	ljmp CCU_ISR
 
 ; These register definitions needed by 'math32.inc'
 DSEG at 0x30
-<<<<<<< HEAD:refl_oven_ctrl.asm
-buffer: ds 30
-=======
-<<<<<<< Updated upstream:serial_temp.asm
-=======
-w: 	 ds 3
->>>>>>> Stashed changes:refl_oven_ctrl.asm
->>>>>>> isabranch:serial_temp.asm
+w:	 ds 3
 x:   ds 4
 y:   ds 4
 bcd: ds 5
-buffer: ds 30
-
-; THERMOCOUPLE&SENSOR
-LM_Result: ds 2
-TC_Result: ds 1
-temp:ds 2
-LM_TEMP: ds 2
 
 ; TEMPERATURE
 SaveT: ds 4
 currentTemp: ds 2	; current temperature from sensor
 SoakTemp: ds 2		; set soak temperature
 ReflTemp: ds 2		; set refl temperature
+Power: ds 2
 ; TIMER COUNTERS	; contains counters and timers
-Count1ms: ds 2 		; Used to determine when (1) second has passed
 Count5ms: ds 1
+Count1ms: ds 2 		; Used to determine when (1) second has passed
 BCD_counterSec: ds 1
 BCD_counterMin: ds 1
 BCD_runtimeSec: ds 1
@@ -120,89 +102,44 @@ ReflSecAlarm: ds 1
 BSEG
 mf: dbit 1
 half_seconds_flag: dbit 1	; Set to 1 in the ISR every time 1000 ms had passed (actually 1 second flag)
-start_counter: dbit 1		; Set to 1 once ready to start countdown
+seconds_flag: dbit 1
+timer_done: dbit 1		; Set to 1 once ready to start countdown
 refltimer_done: dbit 1		; Set to 1 once refl timer starts
 tempdisplay_flag: dbit 1	; Set to 1 for temp and run time display
 
 CSEG
 ; These 'equ' must match the wiring between the microcontroller and the LCD!
-					;OLD PIN CONFIG FOR AT89LP:
-LCD_RS equ P0.5		;P1.1
-LCD_RW equ P0.6		;P1.2
-LCD_E  equ P0.7		;P1.3
-LCD_D4 equ P1.2		;P3.2
-LCD_D5 equ P1.3		;P3.3
-LCD_D6 equ P1.4		;P3.4
-LCD_D7 equ P1.6		;P3.5
+LCD_RS equ P0.5
+LCD_RW equ P0.6
+LCD_E  equ P0.7
+LCD_D4 equ P1.2
+LCD_D5 equ P1.3
+LCD_D6 equ P1.4
+LCD_D7 equ P1.6
 
 ; LCD and Putty Strings
 _Hello_World: DB 'Hello World!', '\r', '\n',0
 _New_Line: DB '\r\n', 0
 _Soak: DB 'Soak:',0
 _Refl: DB 'Refl:',0
-_Temperature_LCD: DB 'Temp:',0	
+_Temperature_LCD: DB 'Temp:',0
+_Power: DB 'Power:%',0	
 _C:	DB '000C',0
 _blank: DB ' ',0
 _default: DB '00:00',0
-_clearLCD: DB '                '
+_clearLCD: DB '                ',0
 
 $NOLIST
 $include(math32.inc)
-<<<<<<< Updated upstream:serial_temp.asm
-$include(LCD_4bit.inc)
-;$include (reflproc_FSM.asm)
-;$include(will.inc)
-;$include(tempcheck.inc)
-$LIST
-
-; INIT SPI
- ;R0 carries data to transmit, on return R1 holds recieved data
-INIT_SPI:
- 	setb MY_MISO ; Make MISO an input pin
- 	clr MY_SCLK ; For mode (0,0) SCLK is zero
- 	setb CE_ADC
-	setb CE_EE
-	clr CE_RTC ; RTC CE is active high
- 	ret
-DO_SPI_G:
- 	push acc
- 	mov R1, #0 ; Received byte stored in R1
- 	mov R2, #8 ; Loop counter (8-bits)
-DO_SPI_G_LOOP:
- 	mov a, R0 ; Byte to write is in R0
- 	rlc a ; Carry flag has bit to write
- 	mov R0, a
- 	mov MY_MOSI, c
- 	setb MY_SCLK ; Transmit
- 	mov c, MY_MISO ; Read received bit
- 	mov a, R1 ; Save received bit in R1
- 	rlc a
- 	mov R1, a
- 	clr MY_SCLK
- 	djnz R2, DO_SPI_G_LOOP
- 	pop acc
- 	ret
- 	
-=======
 $include(LCD_4bit_LPC9351.inc)
-;$include(LCD_4bit.inc)
+$include(voice_feedback.asm)
 ;$include (reflproc_FSM.asm)
-;$include(will.inc)
-;$include(tempcheck.inc)
 $LIST
 
-;---------------------------------;
-; Initial configuration of ports. ;
-; After reset the default for the ;
-; pins is 'Open Drain'.  This     ;
-; routine changes them pins to    ;
-; Quasi-bidirectional like in the ;
-; original 8051.                  ;
-; Notice that P1.2 and P1.3 are   ;
-; always 'Open Drain'. If those   ;
-; pins are to be used as output   ;
-; they need a pull-up resistor.   ;
-;---------------------------------;
+;------------------------------;
+; 		PORT INIT/CONFIG	   ;
+;------------------------------;
+
 Ports_Init:
     ; Configure all the ports in bidirectional mode:
     mov P0M1, #00H
@@ -235,7 +172,6 @@ getchar_L1:
 	mov	a,SBUF
 	ret
 
->>>>>>> Stashed changes:refl_oven_ctrl.asm
 ; Configure the serial port and baud rate
 InitSerialPort:
 	mov	BRGCON,#0x00
@@ -388,124 +324,92 @@ EX1_ISR:
    clr ECCU
    reti
 
+
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
-; for timer 0                     ;
+; for timer 1                     ;
 ;---------------------------------;
-Timer0_Init:
+Timer1_Init:
 	mov a, TMOD
-	anl a, #0xf0 		; Clear the bits for timer 0
-	orl a, #0x01 		; Configure timer 0 as 16-timer
+	anl a, #0x0f ; Clear the bits for timer 1
+	orl a, #0x10 ; Configure timer 1 as 16-timer
 	mov TMOD, a
-	mov TH0, #high(TIMER0_RELOAD)
-	mov TL0, #low(TIMER0_RELOAD)
-	; Set autoreload value
-	mov TIMER0_RELOAD_H, #high(TIMER0_RELOAD)
-	mov TIMER0_RELOAD_L, #low(TIMER0_RELOAD)
+	mov TH1, #high(TIMER1_RELOAD)
+	mov TL1, #low(TIMER1_RELOAD)
 	; Enable the timer and interrupts
-    setb ET0  		; Enable timer 0 interrupt
+    setb ET1  ; Enable timer 1 interrupt
+    setb TR1  ; Start timer 1
 	ret
 
 ;---------------------------------;
-; ISR for timer 0.  Set to execute;
-; every 1/4096Hz to generate a    ;
-; 2048 Hz square wave at pin P3.7 ;
+; ISR for timer 1                 ;
 ;---------------------------------;
-Timer0_ISR:
-	;clr TF0  ; According to the data sheet this is done for us already.
-	cpl SOUND_OUT ; Connect speaker to P3.7!
-	reti
-
-
-;---------------------------------;
-; Routine to initialize the ISR   ;
-; for timer 2                     ;
-;---------------------------------;
-Timer2_Init:
-	mov T2CON, #0 ; Stop timer/counter.  Autoreload mode.
-	mov TH2, #high(TIMER2_RELOAD)
-	mov TL2, #low(TIMER2_RELOAD)
-	; Set the reload value
-	mov RCAP2H, #high(TIMER2_RELOAD)
-	mov RCAP2L, #low(TIMER2_RELOAD)
-	; Init One millisecond interrupt counter.  It is a 16-bit variable made with two 8-bit parts
-	clr a
-	mov Count1ms+0, a
-	mov Count1ms+1, a
-	; Enable the timer and interrupts
-    setb ET2  ; Enable timer 2 interrupt
-    setb TR2  ; Enable timer 2
-	ret
-
-;---------------------------------;
-; ISR for timer 2                 ;
-;---------------------------------;
-Timer2_ISR:
-	clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in ISR
-	cpl P3.6 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+Timer1_ISR:
+	mov TH1, #high(TIMER1_RELOAD)
+	mov TL1, #low(TIMER1_RELOAD)
 	
 	; The two registers used in the ISR must be saved in the stack
 	push acc
 	push psw
 	
-	; Increment the 16-bit one mili second counter
-	inc Count1ms+0    ; Increment the low 8-bits first
-	mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
-	jnz Inc_Done
-	inc Count1ms+1  
-    
+	; Increment the 8-bit 5-mili-second counter
+	inc Count5ms
+
 Inc_Done:
 	; Check if half second has passed
-	mov a, Count1ms+0
-	cjne a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
-	mov a, Count1ms+1
-	cjne a, #high(1000), Timer2_ISR_done
+	mov a, Count5ms
+	cjne a, #200, Timer1_ISR_done ; Warning: this instruction changes the carry flag!
 	
-	; 500 milliseconds have passed.  Set a flag so the main program knows
-	setb half_seconds_flag ; Let the main program know half second had passed
-	cpl TR0 ; Enable/disable timer/counter 0. This line creates a beep-silence-beep-silence sound.
-	; Reset to zero the milli-seconds counter, it is a 16-bit variable
-	clr a
-	mov Count1ms+0, a
-	mov Count1ms+1, a
-	; Decrement the BCD counter
-	mov a, BCD_counterSec
-	sjmp Timer2_ISR_decrement		; jump to decrement counter
-<<<<<<< HEAD:refl_oven_ctrl.asm
-;   jnb ALSEC_BUTTON, Timer2_ISR_decrement
-=======
-<<<<<<< Updated upstream:serial_temp.asm
-;    jnb ALSEC_BUTTON, Timer2_ISR_decrement
->>>>>>> isabranch:serial_temp.asm
-;	add a, #0x01
-=======
->>>>>>> Stashed changes:refl_oven_ctrl.asm
-	sjmp Timer2_ISR_da
-Timer2_ISR_decrement:
-	add a, #0x99 ; Adding the 10-complement of -1 is like subtracting 1.
-Timer2_ISR_da:
-	da a ; Decimal adjust instruction.  Check datasheet for more details!
-	mov BCD_counterSec, a	
-Timer2_ISR_done:
+	; 1000 milliseconds have passed.  Set a flag so the main program knows
+	setb seconds_flag ; Let the main program know half second had passed
+	; Reset to zero the 5-milli-seconds counter, it is a 8-bit variable
+	mov Count5ms, #0
+	
+	; decrement seconds
+	mov a , BCD_counterSec
+	add a, #0x99
+	da a
+	mov BCD_counterSec, a
+	cjne a, #0x99, Timer1_ISR_done
+	mov BCD_counterSec, #0x59
+	;decrement minutes
+	mov a , BCD_counterMin
+	add a, #0x99
+	da a
+	mov BCD_counterMin, a
+	cjne a, #0x99, Timer1_ISR_done	;If timer minutes at 0, set timerdone flag
+	setb timer_done	
+	mov BCD_counterMin, #0x00
+	
+Timer1_ISR_done:
 	pop psw
 	pop acc
 	reti
-    
+	
 ;----------------------;
 ;    MAIN PROGRAM      ;
 ;----------------------;
 MainProgram:
-    mov SP, #7FH
+    mov SP, #0x7F
+    
+    lcall Ports_Init ; Default all pins as bidirectional I/O. See Table 42.
     lcall LCD_4BIT
-    
-    ; enable global interrupts
-    lcall Timer0_Init
-    lcall Timer2_Init
-    
-    ; In case you decide to use the pins of P0 configure the port in bidirectional mode:
-    mov P0M0, #0	;ESSENTIAL!! BUTTONS WILL GO NUTS
-    mov P0M1, #0
-   	
+    lcall Double_Clk
+	lcall InitADC0 ; Call after 'Ports_Init'
+	lcall InitDAC1 ; Call after 'Ports_Init'
+	lcall CCU_Init
+	lcall Init_SPI
+	lcall Timer1_Init
+	lcall InitSerialPort
+	
+	clr TR1
+	clr TMOD20 ; Stop CCU timer
+	clr SOUND ; Turn speaker off
+	clr T2S_FSM_Start
+	setb EA ; Enable global interrupts.
+
+	; initialize vars
+	mov T2S_FSM_state, #0
     mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
 	mov BCD_counterSec, #0x00
@@ -533,51 +437,27 @@ MainProgram:
 	Send_Constant_String(#_blank)
 	Set_Cursor(2,11)
 	Send_Constant_String(#_default)
-	
-	lcall INIT_SPI
-	lcall InitSerialPort
 
-	setb EA		;counter not running originally
-<<<<<<< HEAD:refl_oven_ctrl.asm
-	clr tempdisplay_flag
-	
-	; Set counters
-	mov BCD_counterSec, #0x00
-	mov BCD_counterMin, #0x00
-	mov a, BCD_counterSec 		; number to be displayed placed in accumulator
-	Set_Cursor(1, 11)     ; the place in the LCD where we want the BCD counter value
-	Display_BCD(BCD_counterMin); 
-	Set_Cursor(2, 11)     ; the place in the LCD where we want the BCD counter value
-	Display_BCD(BCD_counterSec);
 	ljmp State0_SetupSoak			; sets up all soak temp, time, refl temp, time before counter start
-
-;-----------------------------;
-;	SET SOAK/REFL SETTINGS	  ;
-;-----------------------------;
-=======
-
-	clr tempdisplay_flag
-	ljmp State0_SetupSoak			; sets up all soak temp, time, refl temp, time before counter start
-
 
 ;-------------------------------------;
 ;	STATE0 SET SOAK/REFL SETTINGS	  ;
 ;-------------------------------------;
->>>>>>> isabranch:serial_temp.asm
 ;--------- SETUP SOAK ---------;
 State0_SetupSoak:
+
 	jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
 	Wait_Milli_Seconds(#50)	; Debounce delay.  This macro is also in 'LCD_4bit.inc'
 	jb BOOT_BUTTON, SetSoakTemp  ; if the 'BOOT' button is not pressed skip
 	jnb BOOT_BUTTON, $
 	
 	;Make LCD screen blink??
-	
+
 	clr a					; clear all settings
 	mov SoakTemp, a
 	mov SoakMinAlarm, a
 	mov SoakSecAlarm, a
-	lcall Display_Soak
+	lcall Display_Soak	
 		
 	ljmp State0_SetupSoak	;loops in Setup until Start button pressed
 
@@ -593,6 +473,7 @@ SetSoakTemp:
     Wait_Milli_seconds(#50)
     jb TEMP_BUTTON, SetSoakMin
     jnb TEMP_BUTTON, $
+    
     ; increment Soak temp
 	mov a, SoakTemp
 	add a, #0x01
@@ -600,7 +481,6 @@ SetSoakTemp:
 	mov SoakTemp, a
 	clr a
 	lcall Display_Soak
-	;lcall Display_Refl
 	ljmp State0_SetupSoak
 	
 SetSoakMin:
@@ -665,27 +545,6 @@ State0_SetupRefl:
 	lcall Display_Refl	
 	
 	ljmp State0_SetupRefl	;loops in Setup until Start button pressed
-		
-CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
-	jb STARTSTOP_BUTTON, State0_SetupRefl
-    Wait_Milli_seconds(#50)
-    jb STARTSTOP_BUTTON, State0_SetupRefl
-    jnb STARTSTOP_BUTTON, $
-    
-	setb half_seconds_flag		; pressed to exit settings and start timer
-	setb TR2
-	
-	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
-	mov BCD_counterSec, SoakSecAlarm
-	
-	clr refltimer_done; clear timer done flags to indicate Soak stage
-	
-	;------------------------- TODO ----------------------------;
-	; Voice Feedback Soak stage
-	; Set oven to Soak heat
-	;-----------------------------------------------------------;
-	
-	ljmp Forever
 	
 SetReflTemp:
 	jb TEMP_BUTTON, SetReflMin ; if 'soak min' button is not pressed, check soak sec
@@ -723,7 +582,28 @@ incrementRM:
 	clr a
 	lcall Display_Refl
 	ljmp State0_SetupRefl
+
+
+CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
+	jb STARTSTOP_BUTTON, State0_SetupRefl
+    Wait_Milli_seconds(#50)
+    jb STARTSTOP_BUTTON, State0_SetupRefl
+    jnb STARTSTOP_BUTTON, $
+   
+   	setb TR1			;Start Timer
 	
+	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
+	mov BCD_counterSec, SoakSecAlarm
+	
+	clr refltimer_done; clear timer done flags
+	
+	;------------------------- TODO ----------------------------;
+	; Voice Feedback Soak stage
+	; Set oven to Soak heat
+	;-----------------------------------------------------------;
+	
+	ljmp Forever
+
 SetReflSec:
 	jb ALSEC_BUTTON, CheckStartTimer
     Wait_Milli_seconds(#50)
@@ -749,105 +629,115 @@ incrementRS:
    
 ;--------------------------------;
 ;		STATE1 RAMP SOAK 	     ;
-;--------------------------------;  
-State1_RampSoak:
+;--------------------------------; 
+;State1_RampSoak:
+;	jb MODE_BUTTON, SwitchDisplay_S1		; if stop button not pressed, go loop and check for 00
+;    Wait_Milli_seconds(#50)
+;    jb MODE_BUTTON, SwitchDisplay_S1
+;    jnb MODE_BUTTON, $
+    
+;	jb tempdisplay_flag, TimerDisplayJmp
+;	jnb tempdisplay_flag, TempDisplayJmp
+	
+;	ljmp State1_RampSoak
+;SwitchDisplay_S1:
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
-	clr c
-	mov a, currentTemp
-	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
+;	mov Power, #1100100B	;power at 100%
+;	clr c
+;	mov a, currentTemp
+;	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
 ; compare if greater or equal, proceed
-EQL_soak:
-	ljmp Forever
-NOT_EQL_soak:
-	jc A_LESS_soak
-A_GREATER_soak:
-	ljmp Forever
-A_LESS_soak:
-	ljmp State1_RampSoak
+;EQL_soak:
+;	ljmp Forever
+;NOT_EQL_soak:
+;	jc A_LESS_soak
+;A_GREATER_soak:
+;	ljmp Forever
+;A_LESS_soak:
+;	ljmp State1_RampSoak
 
 	;------------------------- TODO -------------------------------;
 	; Implement safety feature (if Temp < 50C in first 60s, abort) ;
 	;--------------------------------------------------------------;
- 
+    
+
+;----------------------;
+;       JMP FUNCS      ;
+;----------------------;
+TempDisplayJmp:
+	ljmp TempDisplay
+TimerDisplayJmp:
+	ljmp TimerDisplay
+    
 ;------------------------------------;
-;   	STATE2&4 SOAK AND REFLOW   	 ;
+;		 STATE2&4 MAIN LOOP   		 ;
 ;------------------------------------;
+
 ; forever loop interface with putty
 Forever:
-	
 	;------------------------- TODO ----------------------------;
 	; Check Temperature
 	;-----------------------------------------------------------;
+	mov Power, #0x20	;power at 20% for Soak and Refl Stages 2&4
+	
+	jnb seconds_flag, CheckButtons
+	; One second has passed, refresh the LCD with new time
+	
+	jb timer_done, TimerDone		;check if timer done
+	clr seconds_flag
+	jb tempdisplay_flag, TempDisplayJmp	; if temp mode button pressed, show temp display
+	ljmp WriteNum 
 
+	; Do this forever
+	sjmp CheckButtons
+
+CheckButtons:
 	; TIME CHECK
 	jb BOOT_BUTTON, CheckStop  ; buttons to change screen to Clock and Current Temp later
 	Wait_Milli_Seconds(#50)
 	jb BOOT_BUTTON, CheckStop
 	jnb BOOT_BUTTON, $
-
-	clr TR2                 ; Stop timer 2
+	
+	clr TR1                 ; Stop timer 2
 	clr a
-	mov Count1ms+0, a
-	mov Count1ms+1, a
-	mov BCD_counterSec, a
-	mov BCD_counterMin, a
-	setb TR2                ; Start timer 2
+	mov BCD_counterSec, #0x00
+	mov BCD_counterMin, #0x00
+	lcall Display_Soak
+	lcall Display_Refl
 	
-	ljmp WriteNum 
+	ljmp State0_SetupSoak
 
-	; Do this forever
-	sjmp Forever
-	
-	;switch displays instead of loop_a
+; add another button for display that will loop to loop_a after
 CheckStop:
-    jb STARTSTOP_BUTTON, loop_a		; if stop button not pressed, go loop and check for 00
+    jb STARTSTOP_BUTTON, SwitchDisplays		; if stop button not pressed, go loop and display
     Wait_Milli_seconds(#50)
-    jb STARTSTOP_BUTTON, loop_a
+    jb STARTSTOP_BUTTON, SwitchDisplays
     jnb STARTSTOP_BUTTON, $
-    
-    clr TR2                 ; Stop timer 2
-	clr a
-	mov Count1ms+0, a
-	mov Count1ms+1, a
-	mov BCD_counterSec, a
-	
+    clr TR1                 ; Stop timer 2
+    	
 	;------------------------- TODO ----------------------------;
-	; Turn off oven
-	; Voice feed back Turn off oven
+	; Turn off power oven
 	;-----------------------------------------------------------;	
 	ljmp State0_SetupSoak		; if stop button pressed, go back to setup
-	
-;SwitchDisplays:
-;	jb MODE_BUTTON, loop_a		; if stop button not pressed, go loop and check for 00
-;    Wait_Milli_seconds(#50)
-;    jb MODE_BUTTON, loop_a
-;    jnb MODE_BUTTON, $
-	
-;	jb tempdisplay_flag, TimerDisplay
-;	jnb tempdisplay_flag, TempDisplay
 
-	ljmp loop_a
+SwitchDisplays:
+	jb MODE_BUTTON, Forever		; if stop button not pressed, go loop and check for 00
+    Wait_Milli_seconds(#50)
+    jb MODE_BUTTON, Forever
+    jnb MODE_BUTTON, $
 	
-loop_a:
-	jnb half_seconds_flag, Forever ;check if 1 second has passed...
-loop_b:
-    clr half_seconds_flag ; We clear this flag in the main loop, but it is set in the ISR for timer 2
-    mov a, BCD_counterSec
-    cjne a, #0x99, WriteNum  ;check to see if sec counter is at 00, skip if not 00
-   
-    mov a, #0x59 			; if sec at 00, reset to number 59
-    mov BCD_counterSec, a
-    
-    clr a
-    mov a, BCD_counterMin
-    cjne a, #0x00, decrementMin	; check if minutes at 00, if so then stop, else decrement minutes
+	jb tempdisplay_flag, TimerDisplayJmp
+	jnb tempdisplay_flag, TempDisplayJmp
+	ljmp Forever
+
 TimerDone:		; if timer done
 	jnb refltimer_done, StartReflTimer		; if reflow timer not done, start reflow timer
 	;else if refltimer done, finish process
-	clr TR2                 ; Stop timer 2
+	clr TR1                 ; Stop timer 2
 	clr a
+	
 	; reset all settings
 	mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
@@ -863,107 +753,57 @@ TimerDone:		; if timer done
 	
 	;------------------------- TODO ----------------------------;
 	; Turn off oven temp
-	; Voice feedback Reflow process over
 	;-----------------------------------------------------------;
+	
 	ljmp State0_SetupSoak		; go back to settings
 
 ;--------------------------------;
 ;		STATE3 RAMP REFL 	     ;
-;--------------------------------; 
-State3_RampRefl:
+;--------------------------------;
+;State3_RampRefl:
+;	jb MODE_BUTTON, SwitchDisplay_S3		; if stop button not pressed, go loop and check for 00
+;    Wait_Milli_seconds(#50)
+;    jb MODE_BUTTON, SwitchDisplay_S3
+;    jnb MODE_BUTTON, $
+    
+;	jb tempdisplay_flag, TimerDisplayJmp
+;	jnb tempdisplay_flag, TempDisplayJmp
+	
+;	ljmp State3_RampRefl
+
+;SwitchDisplay_S3:
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
-	clr c
-	mov a, currentTemp
-	cjne a, ReflTemp, NOT_EQL_refl	; check if equal to set soak temp, if so, proceed to next state
+;	mov Power, #1100100B	;power at 100%
+;	clr c
+;	mov a, currentTemp
+;	cjne a, ReflTemp, NOT_EQL_refl	; check if equal to set soak temp, if so, proceed to next state
 
 	; compare if greater or equal, proceed
-EQL_refl:
-	ljmp StartReflTimer
-NOT_EQL_refl:
-	jc A_LESS_refl
-A_GREATER_refl:
-	ljmp StartReflTimer
-A_LESS_refl:
-	ljmp State3_RampRefl
+;EQL_refl:
+;	ljmp StartReflTimer
+;NOT_EQL_refl:
+;	jc A_LESS_refl
+;A_GREATER_refl:
+;	ljmp StartReflTimer
+;A_LESS_refl:
+;	ljmp State3_RampRefl
 	
 ;---------------------------;
 ;		STATE4 REFL 	    ;
 ;---------------------------; 
+
 StartReflTimer:
-	setb refltimer_done			; set to indicate final stage in process
+	clr timer_done
+	setb refltimer_done		; set to indicate final stage in process
 	mov BCD_counterMin, ReflMinAlarm
 	mov BCD_counterSec, ReflSecAlarm
 	
 	;------------------------- TODO --------------------------------------;
 	; Change oven temperature to Reflow
-	; Voice feedback Soak stage over, start Reflow
 	;---------------------------------------------------------------------;
 	
 	ljmp Forever
-	
-decrementMin:
-    add a, #0x99 	;decrement minute counter
-    da a
-    mov BCD_counterMin, a
-    clr a
-bigBCDmincheck:   
-    cjne a, #0x00, WriteNum ;first compare if BCD_counter2 = 00, if so, clear counter
-    clr a
-    mov BCD_counterMin, a
-WriteNum:
-	;check refltimer_done if update soak or refl time
-	jnb refltimer_done, Display_SoakTimer	; if in soak stage, update soak display
-	jb refltimer_done, Display_ReflTimer		; if in refl stage, update refl display
-    ; jumps to Forever after display
 
-Display_SoakTimer:
-	Set_Cursor(1, 11)
-	Display_BCD(BCD_counterMin)
-	Set_Cursor(1, 14)
-	Display_BCD(BCD_counterSec)
-	ljmp Forever
-
-Display_ReflTimer:
-	Set_Cursor(2, 11)
-	Display_BCD(BCD_counterMin)
-	Set_Cursor(2, 14)
-	Display_BCD(BCD_counterSec)
-	ljmp Forever
-	
-;---------------------------;
-;		STATE5 COOLING 	    ;
-;---------------------------; 
-State5_Cool:
-	;------------------------- TODO ----------------------------;
-	; Check current temperature
-	;-----------------------------------------------------------;
-	clr c
-	mov a, currentTemp
-	cjne a, #60 , NOT_EQL_cool	; check if equal to set soak temp, if so, proceed to next state
-
-	; compare if greater or equal, proceed
-EQL_cool:
-	ljmp State5_Cool
-NOT_EQL_cool:
-	jc A_LESS_cool
-A_GREATER_cool:
-	ljmp State5_Cool
-A_LESS_cool:
-	; reset all settings
-	mov SoakTemp, #0x00
-   	mov ReflTemp, #0x00
-	mov BCD_counterSec, #0x00
-	mov BCD_counterMin, #0x00
-	mov SoakMinAlarm, #0x00
-	mov SoakSecAlarm, #0x00
-	mov ReflMinAlarm, #0x00
-	mov ReflSecAlarm, #0x00
-	
-	lcall Display_Soak
-	lcall Display_Refl
-	
-	ljmp State0_SetupSoak	
-	
 END
