@@ -93,6 +93,7 @@ BCD_counterSec: ds 1
 BCD_counterMin: ds 1
 BCD_runtimeSec: ds 1
 BCD_runtimeMin: ds 1
+
 ; ALARMS
 SoakMinAlarm: ds 1		;contains set time values
 SoakSecAlarm: ds 1
@@ -397,7 +398,7 @@ MainProgram:
     lcall Double_Clk
 	lcall InitADC0 ; Call after 'Ports_Init'
 	lcall InitDAC1 ; Call after 'Ports_Init'
-	lcall CCU_Init
+	lcall CCU_Init	; voice feedback interrupt
 	lcall Init_SPI
 	lcall Timer1_Init
 	lcall InitSerialPort
@@ -418,6 +419,8 @@ MainProgram:
 	mov SoakSecAlarm, #0x00
 	mov ReflMinAlarm, #0x00
 	mov ReflSecAlarm, #0x00
+	mov seconds, #0x00
+	mov minutes, #0x00
    	
     ;set constant strings lcd
     Set_Cursor(1,1)
@@ -680,6 +683,10 @@ Forever:
 	;------------------------- TODO ----------------------------;
 	; Check Temperature
 	;-----------------------------------------------------------;
+	; Voice Feedback
+	lcall T2S_FSM		; Run the state machine that plays minutes:seconds
+	
+	
 	mov Power, #0x20	;power at 20% for Soak and Refl Stages 2&4
 	
 	jnb seconds_flag, CheckButtons
@@ -711,9 +718,9 @@ CheckButtons:
 
 ; add another button for display that will loop to loop_a after
 CheckStop:
-    jb STARTSTOP_BUTTON, SwitchDisplays		; if stop button not pressed, go loop and display
+    jb STARTSTOP_BUTTON, VoiceFeedback		; if stop button not pressed, go loop and display
     Wait_Milli_seconds(#50)
-    jb STARTSTOP_BUTTON, SwitchDisplays
+    jb STARTSTOP_BUTTON, VoiceFeedback
     jnb STARTSTOP_BUTTON, $
     clr TR1                 ; Stop timer 2
     	
@@ -721,7 +728,7 @@ CheckStop:
 	; Turn off power oven
 	;-----------------------------------------------------------;	
 	ljmp State0_SetupSoak		; if stop button pressed, go back to setup
-
+	
 SwitchDisplays:
 	jb MODE_BUTTON, Forever		; if stop button not pressed, go loop and check for 00
     Wait_Milli_seconds(#50)
@@ -732,7 +739,19 @@ SwitchDisplays:
 	jnb tempdisplay_flag, TempDisplayJmp
 	ljmp Forever
 
+VoiceFeedback:	
+	; Voice Feedback
+	jb TEMP_BUTTON, SwitchDisplays		; if stop button not pressed, go loop and display
+    Wait_Milli_seconds(#50)
+    jb TEMP_BUTTON, SwitchDisplays
+
+    mov seconds, BCD_counterSec
+    mov minutes, BCD_counterMin
+	setb T2S_FSM_Start	; This plays the current minutes:seconds by making the state machine get out of state zero.
+	ljmp Forever
+	
 TimerDone:		; if timer done
+	
 	jnb refltimer_done, StartReflTimer		; if reflow timer not done, start reflow timer
 	;else if refltimer done, finish process
 	clr TR1                 ; Stop timer 2
