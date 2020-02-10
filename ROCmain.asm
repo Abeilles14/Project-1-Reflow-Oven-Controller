@@ -85,6 +85,7 @@ SaveT: ds 4
 currentTemp: ds 2	; current temperature from sensor
 SoakTemp: ds 2		; set soak temperature
 ReflTemp: ds 2		; set refl temperature
+Power: ds 2
 ; TIMER COUNTERS	; contains counters and timers
 Count5ms: ds 1
 Count1ms: ds 2 		; Used to determine when (1) second has passed
@@ -121,11 +122,12 @@ _Hello_World: DB 'Hello World!', '\r', '\n',0
 _New_Line: DB '\r\n', 0
 _Soak: DB 'Soak:',0
 _Refl: DB 'Refl:',0
-_Temperature_LCD: DB 'Temp:',0	
+_Temperature_LCD: DB 'Temp:',0
+_Power: DB 'Power:%',0	
 _C:	DB '000C',0
 _blank: DB ' ',0
 _default: DB '00:00',0
-_Warning: DB '!', 0
+_clearLCD: DB '                ',0
 
 $NOLIST
 $include(math32.inc)
@@ -383,7 +385,7 @@ Timer1_ISR_done:
 	pop psw
 	pop acc
 	reti
-
+	
 ;----------------------;
 ;    MAIN PROGRAM      ;
 ;----------------------;
@@ -627,11 +629,22 @@ incrementRS:
    
 ;--------------------------------;
 ;		STATE1 RAMP SOAK 	     ;
-;--------------------------------;  
+;--------------------------------; 
 ;State1_RampSoak:
+;	jb MODE_BUTTON, SwitchDisplay_S1		; if stop button not pressed, go loop and check for 00
+;    Wait_Milli_seconds(#50)
+;    jb MODE_BUTTON, SwitchDisplay_S1
+;    jnb MODE_BUTTON, $
+    
+;	jb tempdisplay_flag, TimerDisplayJmp
+;	jnb tempdisplay_flag, TempDisplayJmp
+	
+;	ljmp State1_RampSoak
+;SwitchDisplay_S1:
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
+;	mov Power, #1100100B	;power at 100%
 ;	clr c
 ;	mov a, currentTemp
 ;	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
@@ -649,6 +662,15 @@ incrementRS:
 	; Implement safety feature (if Temp < 50C in first 60s, abort) ;
 	;--------------------------------------------------------------;
     
+
+;----------------------;
+;       JMP FUNCS      ;
+;----------------------;
+TempDisplayJmp:
+	ljmp TempDisplay
+TimerDisplayJmp:
+	ljmp TimerDisplay
+    
 ;------------------------------------;
 ;		 STATE2&4 MAIN LOOP   		 ;
 ;------------------------------------;
@@ -658,13 +680,14 @@ Forever:
 	;------------------------- TODO ----------------------------;
 	; Check Temperature
 	;-----------------------------------------------------------;
-	Set_Cursor(1,1)
+	mov Power, #0x20	;power at 20% for Soak and Refl Stages 2&4
 	
 	jnb seconds_flag, CheckButtons
 	; One second has passed, refresh the LCD with new time
 	
 	jb timer_done, TimerDone		;check if timer done
 	clr seconds_flag
+	jb tempdisplay_flag, TempDisplayJmp	; if temp mode button pressed, show temp display
 	ljmp WriteNum 
 
 	; Do this forever
@@ -688,9 +711,9 @@ CheckButtons:
 
 ; add another button for display that will loop to loop_a after
 CheckStop:
-    jb STARTSTOP_BUTTON, Forever		; if stop button not pressed, go loop and display
+    jb STARTSTOP_BUTTON, SwitchDisplays		; if stop button not pressed, go loop and display
     Wait_Milli_seconds(#50)
-    jb STARTSTOP_BUTTON, Forever
+    jb STARTSTOP_BUTTON, SwitchDisplays
     jnb STARTSTOP_BUTTON, $
     clr TR1                 ; Stop timer 2
     	
@@ -699,17 +722,15 @@ CheckStop:
 	;-----------------------------------------------------------;	
 	ljmp State0_SetupSoak		; if stop button pressed, go back to setup
 
-
-;SwitchDisplays:
-;	jb MODE_BUTTON, loop_a		; if stop button not pressed, go loop and check for 00
-;    Wait_Milli_seconds(#50)
-;    jb MODE_BUTTON, loop_a
-;    jnb MODE_BUTTON, $
+SwitchDisplays:
+	jb MODE_BUTTON, Forever		; if stop button not pressed, go loop and check for 00
+    Wait_Milli_seconds(#50)
+    jb MODE_BUTTON, Forever
+    jnb MODE_BUTTON, $
 	
-;	jb tempdisplay_flag, TimerDisplay
-;	jnb tempdisplay_flag, TempDisplay
-
-
+	jb tempdisplay_flag, TimerDisplayJmp
+	jnb tempdisplay_flag, TempDisplayJmp
+	ljmp Forever
 
 TimerDone:		; if timer done
 	jnb refltimer_done, StartReflTimer		; if reflow timer not done, start reflow timer
@@ -738,11 +759,23 @@ TimerDone:		; if timer done
 
 ;--------------------------------;
 ;		STATE3 RAMP REFL 	     ;
-;--------------------------------; 
+;--------------------------------;
 ;State3_RampRefl:
+;	jb MODE_BUTTON, SwitchDisplay_S3		; if stop button not pressed, go loop and check for 00
+;    Wait_Milli_seconds(#50)
+;    jb MODE_BUTTON, SwitchDisplay_S3
+;    jnb MODE_BUTTON, $
+    
+;	jb tempdisplay_flag, TimerDisplayJmp
+;	jnb tempdisplay_flag, TempDisplayJmp
+	
+;	ljmp State3_RampRefl
+
+;SwitchDisplay_S3:
 	;------------------------- TODO ----------------------------;
 	; Check current temperature
 	;-----------------------------------------------------------;
+;	mov Power, #1100100B	;power at 100%
 ;	clr c
 ;	mov a, currentTemp
 ;	cjne a, ReflTemp, NOT_EQL_refl	; check if equal to set soak temp, if so, proceed to next state

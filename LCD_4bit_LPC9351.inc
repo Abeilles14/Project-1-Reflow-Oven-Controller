@@ -214,26 +214,6 @@ endmac
 ;------------------------------------;
 ;   	  Display on LCD             ;
 ;------------------------------------;
-WriteNum:
-	;check refltimer_done if update soak or refl time
-	jnb refltimer_done, Display_SoakTimer	; if in soak stage, update soak display
-	jb refltimer_done, Display_ReflTimer		; if in refl stage, update refl display
-    ; jumps to Forever after display
-
-Display_SoakTimer:
-	Set_Cursor(1, 11)
-	Display_BCD(BCD_counterMin)
-	Set_Cursor(1, 14)
-	Display_BCD(BCD_counterSec)
-	ljmp Forever
-
-Display_ReflTimer:
-	Set_Cursor(2, 11)
-	Display_BCD(BCD_counterMin)
-	Set_Cursor(2, 14)
-	Display_BCD(BCD_counterSec)
-	ljmp Forever
-	
 Display_Soak:
 	Set_Cursor(1, 7)
 	Display_BCD(SoakTemp)
@@ -251,9 +231,29 @@ Display_Refl:
 	Set_Cursor(2, 14)
 	Display_BCD(ReflSecAlarm)
 	ret
-	
+Display_SoakTimer:
+	Set_Cursor(1, 11)
+	Display_BCD(BCD_counterMin)
+	Set_Cursor(1, 14)
+	Display_BCD(BCD_counterSec)
+	ljmp Forever
+
+Display_ReflTimer:
+	Set_Cursor(2, 11)
+	Display_BCD(BCD_counterMin)
+	Set_Cursor(2, 14)
+	Display_BCD(BCD_counterSec)
+	ljmp Forever
+
+WriteNum:
+	;check refltimer_done if update soak or refl time
+	jnb refltimer_done, Display_SoakTimer	; if in soak stage, update soak display
+	jb refltimer_done, Display_ReflTimer	; if in refl stage, update refl display	
+    ; jumps to Forever after display
+
+
 ;------------------------------------;
-;   		Displays	     ;
+;   			Displays	 		 ;
 ;------------------------------------;
 ;------- show current temperature --------;
 TempDisplay:
@@ -261,16 +261,19 @@ TempDisplay:
 	
 	Set_Cursor(1,1)
 	Send_Constant_String(#_clearLCD)
-	Set_Cursor(1,2)
+	Set_Cursor(2,1)
 	Send_Constant_String(#_clearLCD)
 
 	Set_Cursor(1,1)
 	Send_Constant_String(#_Temperature_LCD)
 	Set_Cursor(1,6)
 	Display_BCD(currentTemp)
+	Set_Cursor(2,1)
+	Send_Constant_String(#_Power)
+	Set_Cursor(2,8)
+	Display_BCD(Power)
 	
-	ljmp loop_a
-
+	ljmp Forever
 ;-------------- show timers ---------------;
 TimerDisplay:
 	clr tempdisplay_flag
@@ -301,21 +304,7 @@ TimerDisplay:
 	lcall Display_Soak
 	lcall Display_Refl
 	
-	ljmp loop_a
-
-
-;----------------------------------------;
-;   	Checking Equal or greater	 ;
-;----------------------------------------;
-;------------- Soak Temp ----------------;
-
-	
-;------------- Refl Temp ----------------;
-
-
-;------------------------------------;
-;   	Temperature Stuff	         ;
-;------------------------------------;
+	ljmp Forever
 
 ;------------------------------------;
 ;   	Temperature Stuff	         ;
