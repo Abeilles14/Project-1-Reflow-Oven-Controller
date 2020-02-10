@@ -537,6 +537,13 @@ State1_RampSoak:
     Wait_Micro_Seconds(#99)
     setb toaster_on ; led off
     Wait_Micro_Seconds(#1)
+    
+    ;check time
+    mov a, ReflMinAlarm
+    cjne a, #0x00, State1_RampSoak
+    mov a, ReflSecAlarm
+    cjne a, #0x00, State1_RampSoak
+    ljmp forever
 
 	;--------------------------------------------;
 	; Check current temperature Using Will's code;
@@ -546,35 +553,35 @@ State1_RampSoak:
 	;clr c
 	;mov a, currentTemp
 	;cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
-EQL_soak:
-	ljmp Forever
-	subb a, currentTemp
+;EQL_soak:
+;	ljmp Forever
+;	subb a, currentTemp
 ; compare if greater or equal, proceed
 
-NOT_EQL_soak:
-	jc A_LESS_soak
-A_GREATER_soak:
-	ljmp Forever
-A_LESS_soak:
+;NOT_EQL_soak:
+;	jc A_LESS_soak
+;A_GREATER_soak:
+;	ljmp Forever
+;A_LESS_soak:
 	;----------------------------------------------------;
 	; Safety feature (if Temp < 50C in first 60s, abort) ;
 	;----------------------------------------------------;
-	clr c
-	mov a, currentTemp
-	subb a, #50
-	mov carry_flag, c
-	jnb carry_flag, continueS1
+;	clr c
+;	mov a, currentTemp
+;	subb a, #50
+;	mov carry_flag, c
+;	jnb carry_flag, continueS1
 
-	mov a,	BCD_counterSec
-	cjne a, #60, continueS1
-	sjmp abortstate1
-continueS1:
-	ljmp State1_RampSoak
+;	mov a,	BCD_counterSec
+;	cjne a, #60, continueS1
+;	sjmp abortstate1
+;continueS1:
+;	ljmp State1_RampSoak
 
 ;emergy abort;
- abortstate1:
- setb toaster_on ; led off
- sjmp abortstate1
+; abortstate1:
+; setb toaster_on ; led off
+; sjmp abortstate1
 ;------------------------------------;
 ;   	STATE2&4 SOAK AND REFLOW   	 ;
 ;------------------------------------;
