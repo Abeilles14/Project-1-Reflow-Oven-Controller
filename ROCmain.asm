@@ -468,8 +468,8 @@ incrementRS:
 ;--------------------------------; 
 State1_RampSoak:
  ; 100% power
-    ;mov pwm_on+1, #high(350) ;PWM of 100 is a diagonal line on the diagram (increasing temp)
-	;mov pwm_on+0, #low(350) ; goes on at 0
+    mov pwm_on+1, #high(350) ;PWM of 100 is a diagonal line on the diagram (increasing temp)
+	mov pwm_on+0, #low(350) ; goes on at 0
 
 	lcall ReadTemp
 	jb MODE_BUTTON, SwitchDisplay_S1		; if stop button not pressed, go loop and check for 00
@@ -634,8 +634,8 @@ TimerDisplayJmp3:
 ;--------------------------------;
 State3_RampRefl:
  	; 100% power
-    ;mov pwm_on+1, #high(350) ;PWM of 100 is a diagonal line on the diagram (increasing temp)
-	;mov pwm_on+0, #low(350) ; goes on at 0
+    mov pwm_on+1, #high(350) ;PWM of 100 is a diagonal line on the diagram (increasing temp)
+	mov pwm_on+0, #low(350) ; goes on at 0
 	
 	lcall ReadTemp
 	
@@ -682,8 +682,8 @@ End_S3:
 ;---------------------------; 
 State5_Cool:
 ;	pwn 0%
-;	 mov pwm_on+0, #low(1000)
-;	 mov pwm_on+1, #high(1000)
+	 mov pwm_on+0, #low(1000)
+	 mov pwm_on+1, #high(1000)
 
 	lcall ReadTemp
 	
@@ -700,15 +700,15 @@ SwitchDisplay_S5:
 	mov Power, #0x00	;power at 0%
 ; Compare upper byte
 CompareUpperB_S5:
-	mov a, #0x24		;change to 0x60 later
+	mov a, Result+1
 	clr c
-	subb a, Result+1	;Soak-Temp
+	subb a, #0x00	;Soak-Temp
 	jnc CompareLowerB_S5		; if SoakTemp>Result UB, check LB, else end state
 	ljmp End_S5
 CompareLowerB_S5:
-	mov a, ReflTemp+0
+	mov a, Result+0		;change to 0x60 later
 	clr c
-	subb a, Result+0
+	subb a, #0x24
 	jnc State5_Cool ; if SoakTemp<Result LB, loop, else end state
 ; If Cooling temp reached, proceed
 ;---------------------------;
