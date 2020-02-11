@@ -454,9 +454,8 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	;------------------------- TODO ----------------------------;
 	; Voice Feedback Soak stage
 	; -Set oven to Soak heat- done??
-	;-----------------------------------------------------------;
-	
-	ljmp Forever
+	;-----------------------------------------------------------;	
+	ljmp s1; forever
 	
 SetReflTemp:
 	jb TEMP_BUTTON, SetReflMin ; if 'soak min' button is not pressed, check soak sec
@@ -543,59 +542,25 @@ State1_RampSoak:
     cjne a, #0x00, State1_RampSoak
     mov a, ReflSecAlarm
     cjne a, #0x00, State1_RampSoak
-    ljmp forever
+    ljmp Time_check
 
-	;--------------------------------------------;
-	; Check current temperature Using Will's code;
-	;--------------------------------------------;
-	;lcall Read_ADC_Channel
-	;lcall GetTemp
-	;clr c
-	;mov a, currentTemp
-	;cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
-;EQL_soak:
-;	ljmp Forever
-;	subb a, currentTemp
-; compare if greater or equal, proceed
 
-;NOT_EQL_soak:
-;	jc A_LESS_soak
-;A_GREATER_soak:
-;	ljmp Forever
-;A_LESS_soak:
-	;----------------------------------------------------;
-	; Safety feature (if Temp < 50C in first 60s, abort) ;
-	;----------------------------------------------------;
-;	clr c
-;	mov a, currentTemp
-;	subb a, #50
-;	mov carry_flag, c
-;	jnb carry_flag, continueS1
 
-;	mov a,	BCD_counterSec
-;	cjne a, #60, continueS1
-;	sjmp abortstate1
-;continueS1:
-;	ljmp State1_RampSoak
-
-;emergy abort;
-; abortstate1:
-; setb toaster_on ; led off
-; sjmp abortstate1
-;------------------------------------;
-;   	STATE2&4 SOAK AND REFLOW   	 ;
-;------------------------------------;
-; forever loop interface with putty
-Forever:
+soak_state:
 	;outputing power = 20%;
+	
     clr toaster_on ; Led on
     Wait_Micro_Seconds(#20)
     setb toaster_on ; led off
     Wait_Micro_Seconds(#80)
-	;------------------------- TODO ----------------------------;
-	; Check Temperature
-	;-----------------------------------------------------------;
+    lcall Forever
+    mov a, SoakSecAlarm
+    cjne a, #0H, soak_state
+    lcall State0_SetupSoak
+    
+    
 
+Time_check:
 
 	; TIME CHECK
 	jb BOOT_BUTTON, CheckStop  ; buttons to change screen to Clock and Current Temp later
@@ -610,12 +575,13 @@ Forever:
 	mov BCD_counterSec, a
 	mov BCD_counterMin, a
 	setb TR2                ; Start timer 2
-	
+		
 	ljmp WriteNum 
 
 	; Do this forever
-	sjmp Forever
+	ret
 	
+;--------------------------------------------------------------------
 	;switch displays instead of loop_a
 CheckStop:
     jb STARTSTOP_BUTTON, loop_a		; if stop button not pressed, go loop and check for 00
