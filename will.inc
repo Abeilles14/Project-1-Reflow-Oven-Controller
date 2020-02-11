@@ -27,8 +27,10 @@ GeString:
 	mov R0, #buffer
 	mov R1, #15D
 GSLoop:
+
 	lcall getchar
 	push acc
+
 	clr C
 	subb a, #10H
 	pop acc
@@ -36,13 +38,14 @@ GSLoop:
 	MOV @R0, A
 	inc R0
 	djnz R1, GSSkip
+
 mov a, #0xFF 
 mov buffer+0,a
 mov buffer+1,a
 mov buffer+2,a
 mov buffer+3,a
 mov buffer+4,a
-	
+
 	sjmp GSDone
 GSSkip:
 	SJMP GSLoop

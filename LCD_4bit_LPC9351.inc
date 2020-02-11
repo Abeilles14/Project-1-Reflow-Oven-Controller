@@ -266,12 +266,69 @@ TempDisplay:
 
 	Set_Cursor(1,1)
 	Send_Constant_String(#_Temperature_LCD)
-	Set_Cursor(1,6)
-	Display_BCD(currentTemp)
+	;Set_Cursor(1,6)
+	;Display_BCD(currentTemp)
 	Set_Cursor(2,1)
 	Send_Constant_String(#_Power)
 	Set_Cursor(2,8)
 	Display_BCD(Power)
+
+;----------- DISPLAY TEMP --------------;
+
+	push acc
+	lcall Wait_Sec
+	pop acc
+	
+;	clr a
+;	mov x+0,Result+0
+;	mov x+1,Result+1
+;	mov x+2,a
+;	mov x+3,a
+	
+;PRINTS RESULT TEMPERATURE IN TOP LEFT	
+	lcall hex2bcd
+	push acc
+	Set_cursor (1,6) ;print to the lcd
+	pop acc
+	lcall LCD_3BCD
+	push acc
+	WriteData(#'C')
+	pop acc
+	
+		
+;	clr a
+;	mov x+0,LM_TEMP+0
+;	mov x+1,LM_TEMP+1
+;	mov x+2,a
+;	mov x+3,a
+	
+;PRINTS TEMPERATURE FROM LM335 (ROOM TEMP) IN BOTTOM LEFT
+	lcall hex2bcd
+	push acc
+	Set_cursor (1,12) ;print to the lcd
+	pop acc
+	lcall LCD_3BCD
+	push acc
+	WriteData(#'C')
+	pop acc
+	
+		
+;	clr a
+;	mov x+0,TC_Result+0
+;	mov x+1,TC_Result+1
+;	mov x+2,a
+;	mov x+3,a
+
+	
+;PRINTS THERMOCOUPLE TEMPERATURE ON BOTTOM RIGHT
+;	lcall hex2bcd
+;	push acc
+;	Set_cursor (2,6) ;print to the lcd
+;	pop acc
+;	lcall LCD_3BCD
+;	push acc
+;	WriteData(#'C')
+;	pop acc
 	
 	ljmp Forever
 ;-------------- show timers ---------------;

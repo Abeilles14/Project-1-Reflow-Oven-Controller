@@ -83,9 +83,8 @@ buffer: ds 30
 
 ; THERMOCOUPLE
 LM_Result: ds 2
-TC_Result: ds 1
+TC_Result: ds 2
 Result: ds 2
-temp:ds 2
 LM_TEMP: ds 2
 ; TEMPERATURE
 SaveT: ds 4
@@ -142,181 +141,16 @@ $include(LCD_4bit_LPC9351.inc)
 $include(math32.inc)
 $include(voice_feedback.asm)
 ;$include (reflproc_FSM.asm)
-;$include(spi.inc)
-;$include(will.inc)
-;$include(tempcheck.inc)
+$include(will.inc)
+$include(tempcheck.inc)
+$include(Jesus_stuff.inc)
+;$include(check_temp.asm)
 $LIST
-
-
-;------------------------------;
-; 		PORT INIT/CONFIG	   ;
-;------------------------------;
-
-Ports_Init:
-    ; Configure all the ports in bidirectional mode:
-    mov P0M1, #00H
-    mov P0M2, #00H
-    mov P1M1, #00H
-    mov P1M2, #00H ; WARNING: P1.2 and P1.3 need 1 kohm pull-up resistors if used as outputs!
-    mov P2M1, #00H
-    mov P2M2, #00H
-    mov P3M1, #00H
-    mov P3M2, #00H
-	ret
-
-; Configure the serial port and baud rate
-InitSerialPort:
-	mov	BRGCON,#0x00
-	mov	BRGR1,#high(BRVAL)
-	mov	BRGR0,#low(BRVAL)
-	mov	BRGCON,#0x03 ; Turn-on the baud rate generator
-	mov	SCON,#0x52 ; Serial port in mode 1, ren, txrdy, rxempty
-	; Make sure that TXD(P1.0) and RXD(P1.1) are configured as bidrectional I/O
-	anl	P1M1,#11111100B
-	anl	P1M2,#11111100B
-	ret
-
-;---------------------------------;
-; Initialize ADC1/DAC1 as DAC1.   ;
-; Warning, the ADC1/DAC1 can work ;
-; only as ADC or DAC, not both.   ;
-; The P89LPC9351 has two ADC/DAC  ;
-; interfaces.  One can be used as ;
-; ADC and the other can be used   ;
-; as DAC.  Also configures the    ;
-; pin associated with the DAC, in ;
-; this case P0.4 as 'Open Drain'. ;
-;---------------------------------;
-InitDAC1:
-    ; Configure pin P0.4 (DAC1 output pin) as open drain
-	orl	P0M1,   #00010000B
-	orl	P0M2,   #00010000B
-    mov ADMODB, #00101000B ; Select main clock/2 for ADC/DAC.  Also enable DAC1 output (Table 25 of reference manual)
-	mov	ADCON1, #00000100B ; Enable the converter
-	mov AD1DAT3, #0x80     ; Start value is 3.3V/2 (zero reference for AC WAV file)
-	ret
-
-;---------------------------------;
-; Initialize ADC0/DAC0 as ADC0.   ;
-;---------------------------------;
-InitADC0:
-	; ADC0_0 is connected to P1.7
-	; ADC0_1 is connected to P0.0
-	; ADC0_2 is connected to P2.1
-	; ADC0_3 is connected to P2.0
-    ; Configure pins P1.7, P0.0, P2.1, and P2.0 as inputs
-    orl P0M1, #00000001b
-    anl P0M2, #11111110b
-    orl P1M1, #10000000b
-    anl P1M2, #01111111b
-    orl P2M1, #00000011b
-    anl P2M2, #11111100b
-	; Setup ADC0
-	setb BURST0 ; Autoscan continuos conversion mode
-	mov	ADMODB,#0x20 ;ADC0 clock is 7.3728MHz/2
-	mov	ADINS,#0x0f ; Select the four channels of ADC0 for conversion
-	mov	ADCON0,#0x05 ; Enable the converter and start immediately
-	; Wait for first conversion to complete
-InitADC0_L1:
-	mov	a,ADCON0
-	jnb	acc.3,InitADC0_L1
-	ret
-
-;---------------------------------;
-; Change the internal RC osc. clk ;
-; from 7.373MHz to 14.746MHz.     ;
-;---------------------------------;
-Double_Clk:
-    mov dptr, #CLKCON
-    movx a, @dptr
-    orl a, #00001000B ; double the clock speed to 14.746MHz
-    movx @dptr,a
-	ret
-
-;---------------------------------;
-; Initialize the SPI interface    ;
-; and the pins associated to SPI. ;
-;---------------------------------;
-Init_SPI:
-	; Configure MOSI (P2.2), CS* (P2.4), and SPICLK (P2.5) as push-pull outputs (see table 42, page 51)
-	anl P2M1, #low(not(00110100B))
-	orl P2M2, #00110100B
-	; Configure MISO (P2.3) as input (see table 42, page 51)
-	orl P2M1, #00001000B
-	anl P2M2, #low(not(00001000B)) 
-	; Configure SPI
-	mov SPCTL, #11010000B ; Ignore /SS, Enable SPI, DORD=0, Master=1, CPOL=0, CPHA=0, clk/4
-	ret
-
-;---------------------------------;
-; Sends AND receives a byte via   ;
-; SPI.                            ;
-;---------------------------------;
-Send_SPI:
-	mov SPDAT, a
-Send_SPI_1:
-	mov a, SPSTAT 
-	jnb acc.7, Send_SPI_1 ; Check SPI Transfer Completion Flag
-	mov SPSTAT, a ; Clear SPI Transfer Completion Flag
-	mov a, SPDAT ; return received byte via accumulator
-	ret
-
-;---------------------------------;
-; SPI flash 'write enable'        ;
-; instruction.                    ;
-;---------------------------------;
-Enable_Write:
-	clr FLASH_CE
-	mov a, #WRITE_ENABLE
-	lcall Send_SPI
-	setb FLASH_CE
-	ret
-
-;---------------------------------;
-; This function checks the 'write ;
-; in progress' bit of the SPI     ;
-; flash memory.                   ;
-;---------------------------------;
-Check_WIP:
-	clr FLASH_CE
-	mov a, #READ_STATUS
-	lcall Send_SPI
-	mov a, #0x55
-	lcall Send_SPI
-	setb FLASH_CE
-	jb acc.0, Check_WIP ;  Check the Write in Progress bit
-	ret
-	
-;---------------------------------;
-; CRC-CCITT (XModem) Polynomial:  ;
-; x^16 + x^12 + x^5 + 1 (0x1021)  ;
-; CRC in [R7,R6].                 ;
-; Converted to a macro to remove  ;
-; the overhead of 'lcall' and     ;
-; 'ret' instructions, since this  ;
-; 'routine' may be executed over  ;
-; 4 million times!                ;
-;---------------------------------;
-;crc16:
-crc16 mac
-	xrl	a, r7			; XOR high of CRC with byte
-	mov r0, a			; Save for later use
-	mov	dptr, #CRC16_TH ; dptr points to table high
-	movc a, @a+dptr		; Get high part from table
-	xrl	a, r6			; XOR With low byte of CRC
-	mov	r7, a			; Store to high byte of CRC
-	mov a, r0			; Retrieve saved accumulator
-	mov	dptr, #CRC16_TL	; dptr points to table low	
-	movc a, @a+dptr		; Get Low from table
-	mov	r6, a			; Store to low byte of CRC
-	;ret
-endmac
 
 EX1_ISR:
    clr ECCU
    reti
-
-
+   
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
 ; for timer 1                     ;
@@ -384,16 +218,15 @@ Timer1_ISR_done:
 MainProgram:
     mov SP, #0x7F
     
+    lcall InitSerialPort
     lcall Ports_Init ; Default all pins as bidirectional I/O. See Table 42.
     lcall LCD_4BIT
     lcall Double_Clk
 	lcall InitADC0 ; Call after 'Ports_Init'
-	lcall InitDAC1 ; Call after 'Ports_Init'
 	lcall CCU_Init	; voice feedback interrupt
-	lcall Init_SPI
 	lcall Timer1_Init
-	lcall InitSerialPort
 	
+	; set/clear interrupts
 	clr TR1
 	clr TMOD20 ; Stop CCU timer
 	clr SOUND ; Turn speaker off
@@ -401,7 +234,7 @@ MainProgram:
 	setb EA ; Enable global interrupts.
 
 	; initialize vars
-	mov T2S_FSM_state, #0
+	;mov T2S_FSM_state, #0
     mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
 	mov BCD_counterSec, #0x00
@@ -422,7 +255,7 @@ MainProgram:
 	Send_Constant_String(#_blank)
 	Set_Cursor(1,11)
 	Send_Constant_String(#_default)
-	
+	 
 	Set_Cursor(2,1)
 	Send_Constant_String(#_Refl)
 	Set_Cursor(2,6)
@@ -590,12 +423,21 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
 	mov BCD_counterSec, SoakSecAlarm
 	
+	clr timer_done
 	clr refltimer_done; clear timer done flags
 	
 	;------------------------- TODO ----------------------------;
 	; Voice Feedback Soak stage
 	; Set oven to Soak heat
 	;-----------------------------------------------------------;
+		
+	; temp stuff, clear bits
+	clr a
+	mov x+1,a
+	mov x+2,a
+	mov x+3,a
+	mov x+4,a
+	
 	
 	ljmp Forever
 
@@ -659,37 +501,30 @@ incrementRS:
 	;------------------------- TODO -------------------------------;
 	; Implement safety feature (if Temp < 50C in first 60s, abort) ;
 	;--------------------------------------------------------------;
-    
 
-;----------------------;
-;       JMP FUNCS      ;
-;----------------------;
-TempDisplayJmp:
-	ljmp TempDisplay
-TimerDisplayJmp:
-	ljmp TimerDisplay
-    
 ;------------------------------------;
 ;		 STATE2&4 MAIN LOOP   		 ;
 ;------------------------------------;
 
 ; forever loop interface with putty
 Forever:
+	; check temperature
+	lcall ReadTemp	
+
 	;------------------------- TODO ----------------------------;
 	; Check Temperature
 ;	 lcall ReadTemp
 ;	 mov currentTemp, Result
 	;-----------------------------------------------------------;
 	; Voice Feedback
-	lcall T2S_FSM		; Run the state machine that plays minutes:seconds
-	
-	
+	;lcall T2S_FSM		; Run the state machine that plays minutes:seconds
+
 	mov Power, #0x20	;power at 20% for Soak and Refl Stages 2&4
 	
 	jnb seconds_flag, CheckButtons
 	; One second has passed, refresh the LCD with new time
 	
-	jb timer_done, TimerDone		;check if timer done
+	jb timer_done, TimerDoneJmp		;check if timer done
 	clr seconds_flag
 	jb tempdisplay_flag, TempDisplayJmp	; if temp mode button pressed, show temp display
 	ljmp WriteNum 
@@ -713,6 +548,19 @@ CheckButtons:
 	
 	ljmp State0_SetupSoak
 
+
+;----------------------;
+;       JMP FUNCS      ;
+;----------------------;
+TempDisplayJmp:
+	ljmp TempDisplay
+TimerDisplayJmp:
+	ljmp TimerDisplay
+ForeverJmp:
+	ljmp Forever
+TimerDoneJmp:
+	ljmp TimerDone
+	
 ; add another button for display that will loop to loop_a after
 CheckStop:
     jb STARTSTOP_BUTTON, VoiceFeedback		; if stop button not pressed, go loop and display
@@ -725,11 +573,11 @@ CheckStop:
 	; Turn off power oven
 	;-----------------------------------------------------------;	
 	ljmp State0_SetupSoak		; if stop button pressed, go back to setup
-	
+		
 SwitchDisplays:
-	jb MODE_BUTTON, Forever		; if stop button not pressed, go loop and check for 00
+	jb MODE_BUTTON, ForeverJmp		; if stop button not pressed, go loop and check for 00
     Wait_Milli_seconds(#50)
-    jb MODE_BUTTON, Forever
+    jb MODE_BUTTON, ForeverJmp
     jnb MODE_BUTTON, $
 	
 	jb tempdisplay_flag, TimerDisplayJmp
@@ -746,7 +594,7 @@ VoiceFeedback:
     mov minutes, BCD_counterMin
 	setb T2S_FSM_Start	; This plays the current minutes:seconds by making the state machine get out of state zero.
 	ljmp Forever
-	
+
 TimerDone:		; if timer done
 	
 	jnb refltimer_done, StartReflTimer		; if reflow timer not done, start reflow timer
