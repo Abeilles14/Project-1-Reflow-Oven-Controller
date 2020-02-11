@@ -217,6 +217,10 @@ endmac
 Display_Soak:
 	Set_Cursor(1, 7)
 	Display_BCD(SoakTemp)
+	Set_Cursor(1, 5)
+	Display_BCD(SoakTemp+1)
+	Set_Cursor(1, 1)
+	Send_Constant_String(#_Soak)
 	Set_Cursor(1, 11)
 	Display_BCD(SoakMinAlarm)
 	Set_Cursor(1, 14)
@@ -226,6 +230,10 @@ Display_Soak:
 Display_Refl:
 	Set_Cursor(2, 7)
 	Display_BCD(ReflTemp)
+	Set_Cursor(2, 5)
+	Display_BCD(ReflTemp+1)
+	Set_Cursor(2, 1)
+	Send_Constant_String(#_Refl)
 	Set_Cursor(2, 11)
 	Display_BCD(ReflMinAlarm)
 	Set_Cursor(2, 14)

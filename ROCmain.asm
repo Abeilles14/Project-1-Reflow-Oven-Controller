@@ -12,6 +12,8 @@ BRVAL       EQU ((CLK/BAUD)-16)
 TIMER1_RATE   EQU 200     ; 200Hz, for a timer tick of 5ms
 TIMER1_RELOAD EQU ((65536-(CLK/(2*TIMER1_RATE))))
 
+toaster_on EQU P0.0
+
 ; PINS INPUT OUTPUTS
 FLASH_CE EQU P2.4
 MY_MOSI EQU P2.2
@@ -83,8 +85,8 @@ bcd: ds 5
 ; TEMPERATURE
 SaveT: ds 4
 currentTemp: ds 2	; current temperature from sensor
-SoakTemp: ds 2		; set soak temperature
-ReflTemp: ds 2		; set refl temperature
+SoakTemp: ds 4		; set soak temperature
+ReflTemp: ds 4		; set refl temperature
 Power: ds 2
 ; TIMER COUNTERS	; contains counters and timers
 Count5ms: ds 1
@@ -133,6 +135,7 @@ $NOLIST
 $include(math32.inc)
 $include(LCD_4bit_LPC9351.inc)
 $include(voice_feedback.asm)
+$include(Blinkymacro.inc)
 ;$include (reflproc_FSM.asm)
 $LIST
 
@@ -412,6 +415,8 @@ MainProgram:
 	mov T2S_FSM_state, #0
     mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
+   	mov SoakTemp+1, #0x00
+   	mov ReflTemp+1, #0x00
 	mov BCD_counterSec, #0x00
 	mov BCD_counterMin, #0x00
 	mov SoakMinAlarm, #0x00
@@ -476,6 +481,13 @@ SetSoakTemp:
     
     ; increment Soak temp
 	mov a, SoakTemp
+	cjne a, #0x99, dontincrementhigherSOAK
+incrementhigherSOAK:
+	mov a, SoakTemp+1
+	add a, #0x01
+	da a
+	mov SoakTemp+1, a
+dontincrementhigherSOAK:
 	add a, #0x01
 	da a
 	mov SoakTemp, a
@@ -553,6 +565,13 @@ SetReflTemp:
     jnb TEMP_BUTTON, $
     ; increment Soak temp
 	mov a, ReflTemp
+	cjne a, #0x99, dontincrementhigherREFL
+incrementhigherREFL:
+	mov a, ReflTemp+1
+	add a, #0x01
+	da a
+	mov ReflTemp+1, a
+dontincrementhigherREFL:
 	add a, #0x01
 	da a
 	mov ReflTemp, a
@@ -587,7 +606,7 @@ incrementRM:
 CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	jb STARTSTOP_BUTTON, State0_SetupRefl
     Wait_Milli_seconds(#50)
-    jb STARTSTOP_BUTTON, State0_SetupRefl
+    jb STARTSTOP_BUTTON, jumpercst 
     jnb STARTSTOP_BUTTON, $
    
    	setb TR1			;Start Timer
@@ -603,6 +622,8 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	;-----------------------------------------------------------;
 	
 	ljmp Forever
+jumpercst:
+	ljmp State0_SetupRefl
 
 SetReflSec:
 	jb ALSEC_BUTTON, CheckStartTimer
@@ -741,6 +762,8 @@ TimerDone:		; if timer done
 	; reset all settings
 	mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
+   	mov SoakTemp+1, #0x00
+   	mov ReflTemp+1, #0x00
 	mov BCD_counterSec, #0x00
 	mov BCD_counterMin, #0x00
 	mov SoakMinAlarm, #0x00
