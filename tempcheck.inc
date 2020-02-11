@@ -26,8 +26,8 @@ mov buffer+2,a
 mov buffer+3,a
 mov buffer+4,a
 
-mov x+0,TC_Result+0 
 clr a
+mov x+0,TC_Result+0 
 mov x+1,TC_Result+1
 mov x+2,a
 mov x+3,a
@@ -95,8 +95,8 @@ mov y+2,a
 mov y+3,a
 
 lcall add32
-mov Result+0,x+0
-mov Result+1,x+1
+mov Result+0, x+0
+mov Result+1, x+1
 
 pop acc
 

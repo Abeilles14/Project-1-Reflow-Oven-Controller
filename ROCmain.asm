@@ -99,12 +99,14 @@ BCD_counterSec: ds 1
 BCD_counterMin: ds 1
 BCD_runtimeSec: ds 1
 BCD_runtimeMin: ds 1
-
 ; ALARMS
 SoakMinAlarm: ds 1		;contains set time values
 SoakSecAlarm: ds 1
 ReflMinAlarm: ds 1
 ReflSecAlarm: ds 1
+;POWER
+pwm_on:	   	ds 2 ;Oven controller
+pwm_off:   	ds 2
 
 BSEG
 mf: dbit 1
@@ -144,7 +146,6 @@ $include(voice_feedback.asm)
 $include(will.inc)
 $include(tempcheck.inc)
 $include(Jesus_stuff.inc)
-;$include(check_temp.asm)
 $LIST
 
 EX1_ISR:
@@ -245,6 +246,9 @@ MainProgram:
 	mov ReflSecAlarm, #0x00
 	mov seconds, #0x00
 	mov minutes, #0x00
+   	
+   	mov pwm_on, #0
+    mov pwm_on+1, #0
    	
     ;set constant strings lcd
     Set_Cursor(1,1)
@@ -417,15 +421,7 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
     Wait_Milli_seconds(#50)
     jb STARTSTOP_BUTTON, State0_SetupRefl
     jnb STARTSTOP_BUTTON, $
-   
-   	setb TR1			;Start Timer
-	
-	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
-	mov BCD_counterSec, SoakSecAlarm
-	
-	clr timer_done
-	clr refltimer_done; clear timer done flags
-	
+
 	;------------------------- TODO ----------------------------;
 	; Voice Feedback Soak stage
 	; Set oven to Soak heat
@@ -436,10 +432,13 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	mov x+1,a
 	mov x+2,a
 	mov x+3,a
-	mov x+4,a
+
 	
+	;------------------------- TODO ----------------------------;
+	; Change display to ramp soak?
+	;-----------------------------------------------------------;
 	
-	ljmp Forever
+	ljmp State1_RampSoak
 
 SetReflSec:
 	jb ALSEC_BUTTON, CheckStartTimer
@@ -467,47 +466,71 @@ incrementRS:
 ;--------------------------------;
 ;		STATE1 RAMP SOAK 	     ;
 ;--------------------------------; 
-;State1_RampSoak:
-;	 lcall ReadTemp
-;	 mov currentTemp, Result
-;	 
-;	 jb MODE_BUTTON, SwitchDisplay_S1		; if stop button not pressed, go loop and check for 00
-;    Wait_Milli_seconds(#50)
-;    jb MODE_BUTTON, SwitchDisplay_S1
-;    jnb MODE_BUTTON, $
+State1_RampSoak:
+ ; 100% power
+    ;mov pwm_on+1, #high(350) ;PWM of 100 is a diagonal line on the diagram (increasing temp)
+	;mov pwm_on+0, #low(350) ; goes on at 0
+
+	lcall ReadTemp
+	jb MODE_BUTTON, SwitchDisplay_S1		; if stop button not pressed, go loop and check for 00
+    Wait_Milli_seconds(#50)
+    jb MODE_BUTTON, SwitchDisplay_S1
+    jnb MODE_BUTTON, $
     
-;	jb tempdisplay_flag, TimerDisplayJmp
-;	jnb tempdisplay_flag, TempDisplayJmp
+	jb tempdisplay_flag, TimerDisplayJmp2
+	jnb tempdisplay_flag, TempDisplayJmp2
 	
-;	ljmp State1_RampSoak
-;SwitchDisplay_S1:
-	;------------------------- TODO ----------------------------;
-	; Check current temperature
-	;-----------------------------------------------------------;
-;	mov Power, #1100100B	;power at 100%
-;	clr c
-;	mov a, currentTemp
-;	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
+SwitchDisplay_S1:
+	lcall ReadTemp
+	mov Power, #1100100B	;power at 100%
+	
+	mov a, Result					; if a < SoakTemp, carry c = 1
+	clr c
+	cjne a, SoakTemp, NOT_EQL_soak	; check if equal to set soak temp, if so, proceed to next state
 ; compare if greater or equal, proceed
-;EQL_soak:
-;	ljmp Forever
-;NOT_EQL_soak:
-;	jc A_LESS_soak
-;A_GREATER_soak:
-;	ljmp Forever
-;A_LESS_soak:
-;	ljmp State1_RampSoak
+EQL_soak:
+	clr a
+	clr c
+	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
+	mov BCD_counterSec, SoakSecAlarm
+	clr timer_done
+	clr refltimer_done; clear timer done flags
+	setb TR1			;Start Timer
+	ljmp Forever
+NOT_EQL_soak:
+	jc A_LESS_soak
+A_GREATER_soak:
+	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
+	mov BCD_counterSec, SoakSecAlarm
+	clr timer_done
+	clr refltimer_done; clear timer done flags
+	setb TR1			;Start Timer
+	ljmp Forever
+A_LESS_soak:
+	ljmp State1_RampSoak
 
 	;------------------------- TODO -------------------------------;
 	; Implement safety feature (if Temp < 50C in first 60s, abort) ;
 	;--------------------------------------------------------------;
 
+;----------------------;
+;       JMP FUNCS      ;
+;----------------------;
+TempDisplayJmp2:
+	ljmp TempDisplayJmp
+TimerDisplayJmp2:
+	ljmp TimerDisplayJmp
+	
 ;------------------------------------;
 ;		 STATE2&4 MAIN LOOP   		 ;
 ;------------------------------------;
 
 ; forever loop interface with putty
 Forever:
+	 ; 20% pwm
+    mov pwm_on+1, #high(775) ;PWM of 20 is a horizontal line on the diagram (const temp)
+	mov pwm_on, #low(775)
+	
 	; check temperature
 	lcall ReadTemp	
 
@@ -625,10 +648,15 @@ TimerDone:		; if timer done
 ;		STATE3 RAMP REFL 	     ;
 ;--------------------------------;
 ;State3_RampRefl:
-;	 lcall ReadTemp
-;	 mov currentTemp, Result
-;	 jb MODE_BUTTON, SwitchDisplay_S3		; if stop button not pressed, go loop and check for 00
-;    Wait_Milli_seconds(#50)
+	
+	; 100% power
+;    mov pwm_on+1, #high(315) ;PWM of 100 is a diagonal line on the diagram (increasing temp)
+;	mov pwm_on, #low(315)
+	
+;	lcall ReadTemp
+	
+;	jb MODE_BUTTON, SwitchDisplay_S3		; if stop button not pressed, go loop and check for 00
+;   Wait_Milli_seconds(#50)
 ;    jb MODE_BUTTON, SwitchDisplay_S3
 ;    jnb MODE_BUTTON, $
     
@@ -638,15 +666,12 @@ TimerDone:		; if timer done
 ;	ljmp State3_RampRefl
 
 ;SwitchDisplay_S3:
-	;------------------------- TODO ----------------------------;
-	; Check current temperature
-	;-----------------------------------------------------------;
 ;	mov Power, #1100100B	;power at 100%
 ;	clr c
-;	mov a, currentTemp
+;	mov a, Result
 ;	cjne a, ReflTemp, NOT_EQL_refl	; check if equal to set soak temp, if so, proceed to next state
 
-	; compare if greater or equal, proceed
+	; compare if temp greater or equal, proceed
 ;EQL_refl:
 ;	ljmp StartReflTimer
 ;NOT_EQL_refl:
@@ -676,6 +701,9 @@ StartReflTimer:
 ;		STATE5 COOLING 	    ;
 ;---------------------------; 
 ;State5_Cool:
+;	 mov pwm_on+0, #low(1000)
+; 	 mov pwm_on+1,#high(1000)
+
 ;	 lcall ReadTemp
 ;	 mov currentTemp, Result
 

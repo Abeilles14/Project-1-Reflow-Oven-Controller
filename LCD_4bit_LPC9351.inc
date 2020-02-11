@@ -275,15 +275,15 @@ TempDisplay:
 
 ;----------- DISPLAY TEMP --------------;
 
-	push acc
-	lcall Wait_Sec
-	pop acc
+;	push acc
+;	lcall Wait_Sec
+;	pop acc
 	
-;	clr a
-;	mov x+0,Result+0
-;	mov x+1,Result+1
-;	mov x+2,a
-;	mov x+3,a
+	clr a
+	mov x+0,Result+0
+	mov x+1,Result+1
+	mov x+2,a
+	mov x+3,a
 	
 ;PRINTS RESULT TEMPERATURE IN TOP LEFT	
 	lcall hex2bcd
@@ -296,11 +296,11 @@ TempDisplay:
 	pop acc
 	
 		
-;	clr a
-;	mov x+0,LM_TEMP+0
-;	mov x+1,LM_TEMP+1
-;	mov x+2,a
-;	mov x+3,a
+	clr a
+	mov x+0,LM_TEMP+0
+	mov x+1,LM_TEMP+1
+	mov x+2,a
+	mov x+3,a
 	
 ;PRINTS TEMPERATURE FROM LM335 (ROOM TEMP) IN BOTTOM LEFT
 	lcall hex2bcd
@@ -313,11 +313,11 @@ TempDisplay:
 	pop acc
 	
 		
-;	clr a
-;	mov x+0,TC_Result+0
-;	mov x+1,TC_Result+1
-;	mov x+2,a
-;	mov x+3,a
+	clr a
+	mov x+0,TC_Result+0
+	mov x+1,TC_Result+1
+	mov x+2,a
+	mov x+3,a
 
 	
 ;PRINTS THERMOCOUPLE TEMPERATURE ON BOTTOM RIGHT
@@ -340,7 +340,7 @@ TimerDisplay:
 	Set_Cursor(1,2)
 	Send_Constant_String(#_clearLCD)
 
-    	Set_Cursor(1,1)
+    Set_Cursor(1,1)
 	Send_Constant_String(#_Soak)
 	Set_Cursor(1,6)
 	Send_Constant_String(#_C)
