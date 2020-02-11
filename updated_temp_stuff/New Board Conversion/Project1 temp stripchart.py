@@ -24,8 +24,8 @@ def data_gen():
        t+=1
        val=float(strin)
      #  val/=1000
-       val*=15000
-       val/=470000
+       val*=51
+       val/=10000
        val*=3.3
        cj=0
        val/=255
@@ -36,6 +36,8 @@ def data_gen():
        temp = str(val).zfill(4)+'\n'
 
        ser.write(temp.encode('ascii'))
+       print(strin)
+       print(val)
        yield t, val
 
 

@@ -1,18 +1,17 @@
+;$NOLIST
 cseg
 
-; When using a 22.1184MHz crystal in fast mode
-; one cycle takes 1.0/22.1184MHz = 45.21123 ns
+; When using a 7.373MHz clock
+; one cycle takes 2.0/7.373MHz = 271.26 ns
 
 ;---------------------------------;
 ; Wait 40 microseconds            ;
 ;---------------------------------;
 Wait40uSec:
 	push AR0
-	mov R0, #177
+	mov R0, #74
 L0: 
-	nop
-	nop
-	djnz R0, L0 ; 1+1+3 cycles->5*45.21123ns*177=40us
+	djnz R0, L0 ; 2 cycles->2*271.26ns*74=40us
 	pop AR0
     ret
 
@@ -29,10 +28,10 @@ endmac
 ?Wait_Milli_Seconds:
 	push AR0
 	push AR1
-L3: mov R1, #45
-L2: mov R0, #166
-L1: djnz R0, L1 ; 3 cycles->3*45.21123ns*166=22.51519us
-    djnz R1, L2 ; 22.51519us*45=1.013ms
+L3: mov R1, #10
+L2: mov R0, #184
+L1: djnz R0, L1 ; 2 cycles->2*271.26ns*184=100us
+    djnz R1, L2 ; 100us*10=1ms
     djnz R2, L3 ; number of millisecons to wait passed in R2
     pop AR1
     pop AR0
@@ -45,6 +44,7 @@ LCD_pulse:
 	setb LCD_E
 	lcall Wait40uSec
 	clr LCD_E
+    lcall Wait40uSec
     ret
 
 ;---------------------------------;
@@ -61,7 +61,6 @@ LCD_byte:
 	mov c, ACC.4
 	mov LCD_D4, c
     lcall LCD_pulse
-    lcall Wait40uSec
 	; Write low 4 bits next
 	mov c, ACC.3
 	mov LCD_D7, c
@@ -106,9 +105,7 @@ LCD_4BIT:
 	clr LCD_RW  ; We are only writing to the LCD in this program
 	
 	; After power on, let the LCD start up before initializing
-	; NOTE: the preprogrammed power-on delay of 16 ms on the AT89LP52
-	; seems to be enough.  That is why this line is commented out.
-	; Wait_Milli_Seconds(#40)
+	Wait_Milli_Seconds(#40)
 	
 	; First make sure the LCD is in 8-bit mode and then change to 4-bit mode
 	WriteCommand(#0x33)
