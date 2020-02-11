@@ -271,7 +271,7 @@ TempDisplay:
 	Set_Cursor(2,1)
 	Send_Constant_String(#_Power)
 	Set_Cursor(2,8)
-	Display_BCD(Power)
+	Display_BCD(Display_Power)
 
 ;----------- DISPLAY TEMP --------------;
 

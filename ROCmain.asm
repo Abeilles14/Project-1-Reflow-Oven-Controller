@@ -18,15 +18,17 @@ MY_MOSI EQU P2.2
 MY_MISO EQU P2.3
 MY_SCLK EQU P2.5
 
+;Sound and power outputs
 SOUND equ P2.7
+POWER equ P0.0
 
-;Buttons
+;Boot Button
 BOOT_BUTTON equ P2.6
-
+;Temp Min Sec buttons
 TEMP_BUTTON  equ P0.2		; Inc temperature
 ALMIN_BUTTON  equ P0.3	; Inc minutes
 ALSEC_BUTTON   equ P0.1		; Inc seconds
-
+;Start/Stop timer, Mode button
 STARTSTOP_BUTTON equ P3.0	; Start/Stop process immediately, Settings
 MODE_BUTTON equ P3.1		; Switch Displays between Clock, Current Temp, Settings/timer
 
@@ -88,10 +90,10 @@ Result: ds 2
 LM_TEMP: ds 2
 ; TEMPERATURE
 SaveT: ds 4
-currentTemp: ds 2	; current temperature from sensor
+goalTemp: ds 2
 SoakTemp: ds 2		; set soak temperature
 ReflTemp: ds 2		; set refl temperature
-Power: ds 2
+Display_Power: ds 2
 ; TIMER COUNTERS	; contains counters and timers
 Count5ms: ds 1
 Count1ms: ds 2 		; Used to determine when (1) second has passed
@@ -104,9 +106,7 @@ SoakMinAlarm: ds 1		;contains set time values
 SoakSecAlarm: ds 1
 ReflMinAlarm: ds 1
 ReflSecAlarm: ds 1
-;POWER
-pwm_on:	   	ds 2 ;Oven controller
-pwm_off:   	ds 2
+
 
 BSEG
 mf: dbit 1
@@ -115,6 +115,7 @@ seconds_flag: dbit 1
 timer_done: dbit 1		; Set to 1 once ready to start countdown
 refltimer_done: dbit 1		; Set to 1 once refl timer starts
 tempdisplay_flag: dbit 1	; Set to 1 for temp and run time display
+powerout_flag: dbit 1
 
 CSEG
 ; These 'equ' must match the wiring between the microcontroller and the LCD!
@@ -142,10 +143,10 @@ $NOLIST
 $include(LCD_4bit_LPC9351.inc)
 $include(math32.inc)
 $include(voice_feedback.asm)
-;$include (reflproc_FSM.asm)
 $include(will.inc)
 $include(tempcheck.inc)
 $include(Jesus_stuff.inc)
+$include (Power_out.asm)
 $LIST
 
 EX1_ISR:
@@ -228,6 +229,7 @@ MainProgram:
 	lcall Timer1_Init
 	
 	; set/clear interrupts
+	clr POWER
 	clr TR1
 	clr TMOD20 ; Stop CCU timer
 	clr SOUND ; Turn speaker off
@@ -238,6 +240,7 @@ MainProgram:
 	;mov T2S_FSM_state, #0
     mov SoakTemp, #0x00
    	mov ReflTemp, #0x00
+   	mov GoalTemp, #0x00
 	mov BCD_counterSec, #0x00
 	mov BCD_counterMin, #0x00
 	mov SoakMinAlarm, #0x00
@@ -246,9 +249,6 @@ MainProgram:
 	mov ReflSecAlarm, #0x00
 	mov seconds, #0x00
 	mov minutes, #0x00
-   	
-   	mov pwm_on, #0
-    mov pwm_on+1, #0
    	
     ;set constant strings lcd
     Set_Cursor(1,1)
@@ -424,19 +424,18 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 
 	;------------------------- TODO ----------------------------;
 	; Voice Feedback Soak stage
-	; Set oven to Soak heat
-	;-----------------------------------------------------------;
-		
+	;-----------------------------------------------------------;	
+	
 	; temp stuff, clear bits
 	clr a
 	mov x+1,a
 	mov x+2,a
 	mov x+3,a
 
-	
 	;------------------------- TODO ----------------------------;
 	; Change display to ramp soak?
 	;-----------------------------------------------------------;
+	mov goalTemp, SoakTemp		;track current vs goalTemp
 	
 	ljmp State1_RampSoak
 
@@ -468,10 +467,10 @@ incrementRS:
 ;--------------------------------; 
 State1_RampSoak:
  ; 100% power
-    mov pwm_on+1, #high(350) ;PWM of 100 is a diagonal line on the diagram (increasing temp)
-	mov pwm_on+0, #low(350) ; goes on at 0
 
 	lcall ReadTemp
+	lcall CheckPower
+	
 	jb MODE_BUTTON, SwitchDisplay_S1		; if stop button not pressed, go loop and check for 00
     Wait_Milli_seconds(#50)
     jb MODE_BUTTON, SwitchDisplay_S1
@@ -482,7 +481,7 @@ State1_RampSoak:
 	
 SwitchDisplay_S1:
 	lcall ReadTemp
-	mov Power, #1100100B	;power at 100%
+	mov Display_Power, #1100100B	;power at 100%
 
 ; Compare upper byte
 CompareUpperB_S1:
@@ -523,21 +522,15 @@ TimerDisplayJmp2:
 ; forever loop interface with putty
 Forever:
 	 ; 20% pwm for soak and refl
-    mov pwm_on+1, #high(775) ;PWM of 20 is a horizontal line on the diagram (const temp)
-	mov pwm_on, #low(775)
-	
-	; check temperature
-	lcall ReadTemp	
 
-	;------------------------- TODO ----------------------------;
-	; Check Temperature
-;	 lcall ReadTemp
-;	 mov currentTemp, Result
-	;-----------------------------------------------------------;
+	; check temperature
+	lcall ReadTemp
+	lcall CheckPower
+
 	; Voice Feedback
 	;lcall T2S_FSM		; Run the state machine that plays minutes:seconds
 
-	mov Power, #0x20	;power at 20% for Soak and Refl Stages 2&4
+	mov Display_Power, #0x20	;power at 20% for Soak and Refl Stages 2&4
 	
 	jnb seconds_flag, CheckButtons
 	; One second has passed, refresh the LCD with new time
@@ -586,7 +579,7 @@ CheckStop:
     jb STARTSTOP_BUTTON, VoiceFeedback
     jnb STARTSTOP_BUTTON, $
     clr TR1                 ; Stop timer 2
-    	
+    clr POWER				; stop power
 	;------------------------- TODO ----------------------------;
 	; Turn off power oven
 	;-----------------------------------------------------------;	
@@ -616,10 +609,10 @@ VoiceFeedback:
 TimerDone:		; if timer done
 	clr TR1                 ; Stop timer 2
 	clr a
-	
+	mov goalTemp, ReflTemp		;track current vs goalTemp
 	jnb refltimer_done, State3_RampRefl		; if reflow timer not done, start reflow timer
 	;else if refltimer done, finish process
-
+	mov goalTemp, #0x00		;track current vs goalTemp
 	ljmp State5_Cool		; go to Cool state
 ;----------------------;
 ;       JMP FUNCS      ;
@@ -634,10 +627,9 @@ TimerDisplayJmp3:
 ;--------------------------------;
 State3_RampRefl:
  	; 100% power
-    mov pwm_on+1, #high(350) ;PWM of 100 is a diagonal line on the diagram (increasing temp)
-	mov pwm_on+0, #low(350) ; goes on at 0
-	
+ 	
 	lcall ReadTemp
+	lcall CheckPower
 	
 	jb MODE_BUTTON, SwitchDisplay_S3		; if stop button not pressed, go loop and check for 00
     Wait_Milli_seconds(#50)
@@ -649,7 +641,7 @@ State3_RampRefl:
 	
 SwitchDisplay_S3:
 	lcall ReadTemp
-	mov Power, #1100100B	;power at 100%
+	mov Display_Power, #1100100B	;power at 100%
 
 ; Compare upper byte
 CompareUpperB_S3:
@@ -675,6 +667,7 @@ End_S3:
 	clr timer_done
 	setb refltimer_done; clear timer done flags
 	setb TR1			;Start Timer
+	mov goalTemp, ReflTemp
 	ljmp Forever
 	
 ;---------------------------;
@@ -682,10 +675,9 @@ End_S3:
 ;---------------------------; 
 State5_Cool:
 ;	pwn 0%
-	 mov pwm_on+0, #low(1000)
-	 mov pwm_on+1, #high(1000)
 
 	lcall ReadTemp
+	clr POWER		;power off
 	
 	jb MODE_BUTTON, SwitchDisplay_S5		; if stop button not pressed, go loop and check for 00
     Wait_Milli_seconds(#50)
@@ -697,7 +689,7 @@ State5_Cool:
 	
 SwitchDisplay_S5:
 	lcall ReadTemp
-	mov Power, #0x00	;power at 0%
+	mov Display_Power, #0x00	;power at 0%
 ; Compare upper byte
 CompareUpperB_S5:
 	mov a, Result+1
