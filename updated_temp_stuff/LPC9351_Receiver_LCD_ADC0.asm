@@ -73,7 +73,7 @@ ERASE_BLOCK      EQU 0xd8  ; Address:3 Dummy:0 Num:0
 READ_DEVICE_ID   EQU 0x9f  ; Address:0 Dummy:2 Num:1 to infinite
 
 dseg at 30H
-	w:   ds 3 ; 24-bit play counter.  Decremented in CCU ISR.
+	w: ds 3 ; 24-bit play counter.  Decremented in CCU ISR.
 
 cseg
 

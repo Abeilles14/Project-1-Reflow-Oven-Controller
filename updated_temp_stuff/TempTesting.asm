@@ -83,6 +83,7 @@ getchar_L1:
 	mov	a,SBUF
 	ret
 
+
 ;---------------------------------;
 ; Initialize the serial port      ;
 ;---------------------------------;
@@ -312,15 +313,32 @@ MainProgram:
 	lcall Init_SPI
 
 forever:
-	;lcall Display_ADC_Values
-
+	lcall skip22
 	lcall ReadTemp
-	lcall Wait_Sec
+	lcall Wait_Sec;
+		
+	lcall Display_ADC_Values
 
+	clr a
+	mov x+0,Result+0
+	mov x+1,Result+1
+	mov x+2,a
+	mov x+3,a
+	mov x+4,a
+	lcall hex2bcd
 	Set_cursor (1,1) ;print to the lcd
 	Display_BCD(bcd+1)
 	Display_BCD(bcd+0)
 	WriteData(#'C')
+	
+skip22:
+	mov x+0,AD0DAT0
+	lcall hex2bcd
+	Set_Cursor(1,1)
+	Display_BCD(bcd+1)
+	lcall Display_ADC_Values
+	sjmp skip22
+	
 	sjmp forever
 
 END

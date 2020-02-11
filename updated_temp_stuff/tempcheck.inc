@@ -63,10 +63,8 @@ lcall div32
 mov LM_TEMP+0,x+0
 mov LM_TEMP+1,x+1
 
-
-
-lcall GeString ;Recieve converted ThermoCouple Temperature from Python
-
+;lcall GeString ;Recieve converted ThermoCouple Temperature from Python
+ljmp skip1
 mov a, buffer+0 ;convert 4 digits from ascii to bcd
 anl a, #0x0F
 swap a
@@ -111,13 +109,16 @@ lcall hex2bcd
 ;lcall bcd2hex	;convert final temperature into hex and store int Result
 ;mov Result+0,x+0
 ;mov Result+1,x+1
+
 clr a
 mov buffer+0,a	;clear buffer
 mov buffer+1,a
 mov buffer+2,a
 mov buffer+3,a
 mov buffer+4,a
-
+skip1:
+mov Result+0,LM_TEMP+0
+mov Result+1,LM_TEMP+1
 pop acc
 ret
   
