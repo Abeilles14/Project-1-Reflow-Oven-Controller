@@ -612,7 +612,7 @@ STATE2POWERSKIP:
 	jb timer_done, TimerDoneJmp		;check if timer done
 	clr seconds_flag
 	jb tempdisplay_flag, TempDisplayJmp	; if temp mode button pressed, show temp display
-	jnb tempdisplay_flag, TimerDisplayJmp ;ADDED BY WILL?
+	
 	ljmp WriteNum 
 
 	; Do this forever
@@ -734,6 +734,7 @@ CompareLowerB_S3:
 	subb a, Result+0
 	jnc State3_RampRefl ; if SoakTemp<Result LB, loop, else end state
 ; If Soak Temp reached, proceed
+	ljmp End_S3
 ;----------------------;
 ;       JMP FUNCS      ;
 ;----------------------;
@@ -746,11 +747,6 @@ TimerDisplayJmp3:
 ;		STATE4 REFL 	    ;
 ;---------------------------; 
 End_S3:
-
-	
-	
-	Set_Cursor(1,8)
-	Send_Constant_String(#_Soak)
 	clr timer_done
 	setb refltimer_done		; set to indicate final stage in process
 	mov BCD_counterMin, ReflMinAlarm	; move time settings into counters
