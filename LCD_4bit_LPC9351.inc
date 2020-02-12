@@ -214,7 +214,7 @@ endmac
 ;------------------------------------;
 ;   	  Display on LCD             ;
 ;------------------------------------;
-DDisplay_Soak:
+Display_Soak:
 	Set_Cursor(1, 7)
 	Display_BCD(SoakTemp)
 	Set_Cursor(1, 5)
