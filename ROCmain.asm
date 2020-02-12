@@ -435,7 +435,7 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	
 	jb STARTSTOP_BUTTON, State0_SetupRefl
     Wait_Milli_seconds(#50)
-    jb STARTSTOP_BUTTON, State0_SetupRefl
+    jb STARTSTOP_BUTTON, jumpercst
     jnb STARTSTOP_BUTTON, $
 
 	;------------------------- TODO ----------------------------;
@@ -454,6 +454,8 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	mov goalTemp, SoakTemp		;track current vs goalTemp
 	
 	ljmp State1_RampSoak
+jumpercst:
+	ljmp State0_SetupRefl
 
 SetReflSec:
 	jb ALSEC_BUTTON, CheckStartTimer
@@ -741,5 +743,7 @@ End_S5:
 	lcall Display_Refl
 	
 	ljmp State0_SetupSoak
+	
+
 	
 END
