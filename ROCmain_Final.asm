@@ -524,7 +524,7 @@ State1_RampSoak:
 	
 SwitchDisplay_S1:
 	lcall ReadTemp
-	mov Display_Power, #1100100B	;power at 100%
+	mov Display_Power, #0x99	;power at 100%
 
 ; Compare upper byte
 CompareUpperB_S1:
@@ -735,7 +735,7 @@ State3_RampRefl:
 	
 SwitchDisplay_S3:
 	lcall ReadTemp
-	mov Display_Power, #1100100B	;power at 100%
+	mov Display_Power, #0x99	;power at 100%
 
 ; Compare upper byte
 	mov bcd+0,ReflTemp+0

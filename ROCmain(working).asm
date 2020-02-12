@@ -19,8 +19,8 @@ MY_MISO EQU P2.3
 MY_SCLK EQU P2.5
 
 ;Sound and power outputs
-SOUND equ P0.0
-POWER equ P2.7
+SOUND equ P2.7
+POWER equ P2.6
 
 ;Boot Button
 BOOT_BUTTON equ P2.6
@@ -152,7 +152,7 @@ $LIST
 EX1_ISR:
    clr ECCU
    reti
-   
+
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
 ; for timer 1                     ;
@@ -220,14 +220,15 @@ Timer1_ISR_done:
 MainProgram:
     mov SP, #0x7F
     
-    
     lcall InitSerialPort
     lcall Ports_Init ; Default all pins as bidirectional I/O. See Table 42.
+    lcall InitADC0 ; Call after 'Ports_Init'
+   	lcall InitDAC1
     lcall LCD_4BIT
     lcall Double_Clk
-	lcall InitADC0 ; Call after 'Ports_Init'
 	lcall CCU_Init	; voice feedback interrupt
 	lcall Timer1_Init
+	lcall Init_SPI
 	
 	; set/clear interrupts
 	setb POWER
@@ -235,10 +236,9 @@ MainProgram:
 	clr TMOD20 ; Stop CCU timer
 	clr SOUND ; Turn speaker off
 	clr T2S_FSM_Start
+	mov T2S_FSM_state, #0
 	setb EA ; Enable global interrupts.
 
-
-	
 	mov seconds, #0x00
 	mov minutes, #0x00
     mov SoakTemp, #0x00
@@ -255,11 +255,6 @@ MainProgram:
 	mov ReflMinAlarm, #0x00
 	mov ReflSecAlarm, #0x00
 
-
-	; initialize vars
-	;mov T2S_FSM_state, #0
-
-   	
     ;set constant strings lcd
     Set_Cursor(1,1)
 	Send_Constant_String(#_Soak)
@@ -278,8 +273,6 @@ MainProgram:
 	Send_Constant_String(#_blank)
 	Set_Cursor(2,11)
 	Send_Constant_String(#_default)
-
-
    	
 	ljmp State0_SetupSoak			; sets up all soak temp, time, refl temp, time before counter start
 
@@ -442,9 +435,7 @@ incrementRM:
 	lcall Display_Refl
 	ljmp State0_SetupRefl
 
-
 CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
-	
 	
 	jb STARTSTOP_BUTTON, jumpercst
     Wait_Milli_seconds(#50)
@@ -510,7 +501,6 @@ State1_RampSoak:
 	ljmp State0_SetupRefl
 	Skip123:
 	
-	
 	lcall ReadTemp
 	clr POWER
 	
@@ -518,13 +508,26 @@ State1_RampSoak:
     Wait_Milli_seconds(#50)
     jb MODE_BUTTON, SwitchDisplay_S1
     jnb MODE_BUTTON, $
-    
+
+	mov x, Result
+	lcall hex2bcd2
+	
+	Load_y(10)
+	
+	lcall div32 	
+	mov a, x
+	
+	lcall Play_Sound_Using_Index
+	
+	jb TMOD20, $ ; Wait for sound to finish playing
+
+
 	jb tempdisplay_flag, TimerDisplayJmp2
 	jnb tempdisplay_flag, TempDisplayJmp2
 	
 SwitchDisplay_S1:
 	lcall ReadTemp
-	mov Display_Power, #1100100B	;power at 100%
+	mov Display_Power, #0x99	;power at 100%
 
 ; Compare upper byte
 CompareUpperB_S1:
@@ -571,15 +574,13 @@ TimerDisplayJmp2:
 ;------------------------------------;
 ;		 STATE2&4 MAIN LOOP   		 ;
 ;------------------------------------;
-
  
- 
-
 ; forever loop interface with putty
 Forever:
 	 ; 20% pwm for soak and refl
 
 	; check temperature
+	;lcall T2S_FSM
 	lcall ReadTemp
 	jb refltimer_done,ReadRefl
 	 
@@ -604,7 +605,6 @@ skipRefl:
 	subb a,Result+1	;Soak-Temp
 	jnc CompareLowerSTATE2		
 	ljmp POWER_STATE2;if soak<current temp, enable power
-
 	
 CompareLowerSTATE2:
 	mov a, x+0 ;SoakTemp+0
@@ -625,7 +625,6 @@ POWER_STATE2:
     Wait_Milli_Seconds(#80)
 STATE2POWERSKIP:    
     
-
 	; Voice Feedback
 	;lcall T2S_FSM		; Run the state machine that plays minutes:seconds
 
@@ -659,7 +658,6 @@ CheckButtons:
 	
 	ljmp State0_SetupSoak
 
-
 ;----------------------;
 ;       JMP FUNCS      ;
 ;----------------------;
@@ -690,7 +688,20 @@ SwitchDisplays:
     Wait_Milli_seconds(#50)
     jb MODE_BUTTON, ForeverJmp
     jnb MODE_BUTTON, $
+
+	mov x, Result
+	lcall hex2bcd2
 	
+	Load_y(10)
+	
+	lcall div32 	
+	mov a, x
+	
+	lcall Play_Sound_Using_Index
+	
+	jb TMOD20, $ ; Wait for sound to finish playing
+
+
 	jb tempdisplay_flag, TimerDisplayJmp
 	jnb tempdisplay_flag, TempDisplayJmp
 	ljmp Forever
@@ -730,12 +741,25 @@ State3_RampRefl:
     jb MODE_BUTTON, SwitchDisplay_S3
     jnb MODE_BUTTON, $
     
+	mov x, Result
+	lcall hex2bcd2
+	
+	Load_y(10)
+	
+	lcall div32 	
+	mov a, x
+	
+	lcall Play_Sound_Using_Index
+	
+	jb TMOD20, $ ; Wait for sound to finish playing
+
+    
 	jb tempdisplay_flag, TimerDisplayJmp3
 	jnb tempdisplay_flag, TempDisplayJmp3
 	
 SwitchDisplay_S3:
 	lcall ReadTemp
-	mov Display_Power, #1100100B	;power at 100%
+	mov Display_Power, #0x99	;power at 100%
 
 ; Compare upper byte
 	mov bcd+0,ReflTemp+0
@@ -795,6 +819,19 @@ State5_Cool:
     Wait_Milli_seconds(#50)
     jb MODE_BUTTON, SwitchDisplay_S5
     jnb MODE_BUTTON, $
+    
+	mov x, Result
+	lcall hex2bcd2
+	
+	Load_y(10)
+	
+	lcall div32 	
+	mov a, x
+	
+	lcall Play_Sound_Using_Index
+	
+	jb TMOD20, $ ; Wait for sound to finish playing
+
     
 	jb tempdisplay_flag, TimerDisplayJmp3
 	jnb tempdisplay_flag, TempDisplayJmp3
