@@ -54,6 +54,8 @@ Load_y(2730)
 lcall sub32
 Load_y(10)
 lcall div32
+load_y(3)
+lcall sub32
 mov LM_TEMP+0,x+0
 mov LM_TEMP+1,x+1
 

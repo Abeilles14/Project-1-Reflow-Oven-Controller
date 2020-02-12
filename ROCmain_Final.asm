@@ -509,18 +509,29 @@ State1_RampSoak:
     jb MODE_BUTTON, SwitchDisplay_S1
     jnb MODE_BUTTON, $
 
-	mov x, Result
-	lcall hex2bcd2
+	mov a, Result
+	mov b, #100
+	div ab
 	
-	Load_y(10)
-	
-	lcall div32 	
-	mov a, x
-	
+	cjne a, #0, AmazonServices
+	sjmp Fedex
+AmazonServices:
+	push b
 	lcall Play_Sound_Using_Index
-	
 	jb TMOD20, $ ; Wait for sound to finish playing
-
+	pop b
+Fedex:
+	mov a, b
+	mov b, #10
+	div ab
+	push b
+	lcall Play_Sound_Using_Index
+	jb TMOD20, $ ; Wait for sound to finish playing
+	pop b
+	
+	mov a, b
+	lcall Play_Sound_Using_Index
+	jb TMOD20, $ ; Wait for sound to finish playing
 
 	jb tempdisplay_flag, TimerDisplayJmp2
 	jnb tempdisplay_flag, TempDisplayJmp2
@@ -550,7 +561,7 @@ CompareLowerB_S1:
 	
 	clr c
 	subb a,Result+0
-	jnc State1_RampSoak ; if SoakTemp<Result LB, loop, else end state
+	jnc jumperepreprepepre ; if SoakTemp<Result LB, loop, else end state
 ; If Soak Temp reached, proceed
 End_S1:
 	mov BCD_counterMin, SoakMinAlarm	; move time settings into counters
@@ -562,7 +573,8 @@ End_S1:
 	;------------------------- TODO -------------------------------;
 	; Implement safety feature (if Temp < 50C in first 60s, abort) ;
 	;--------------------------------------------------------------;
-
+jumperepreprepepre:
+	ljmp State1_RampSoak
 ;----------------------;
 ;       JMP FUNCS      ;
 ;----------------------;
@@ -688,19 +700,30 @@ SwitchDisplays:
     Wait_Milli_seconds(#50)
     jb MODE_BUTTON, ForeverJmp
     jnb MODE_BUTTON, $
-
-	mov x, Result
-	lcall hex2bcd2
+    
+	mov a, Result
+	mov b, #100
+	div ab
 	
-	Load_y(10)
-	
-	lcall div32 	
-	mov a, x
-	
+	cjne a, #0, AmazonServices1
+	sjmp Fedex1
+AmazonServices1:
+	push b
 	lcall Play_Sound_Using_Index
-	
 	jb TMOD20, $ ; Wait for sound to finish playing
-
+	pop b
+Fedex1:
+	mov a, b
+	mov b, #10
+	div ab
+	push b
+	lcall Play_Sound_Using_Index
+	jb TMOD20, $ ; Wait for sound to finish playing
+	pop b
+	
+	mov a, b
+	lcall Play_Sound_Using_Index
+	jb TMOD20, $ ; Wait for sound to finish playing
 
 	jb tempdisplay_flag, TimerDisplayJmp
 	jnb tempdisplay_flag, TempDisplayJmp
@@ -741,19 +764,30 @@ State3_RampRefl:
     jb MODE_BUTTON, SwitchDisplay_S3
     jnb MODE_BUTTON, $
     
-	mov x, Result
-	lcall hex2bcd2
+ 	mov a, Result
+	mov b, #100
+	div ab
 	
-	Load_y(10)
-	
-	lcall div32 	
-	mov a, x
-	
+	cjne a, #0, AmazonServices2
+	sjmp Fedex2
+AmazonServices2:
+	push b
 	lcall Play_Sound_Using_Index
+	jb TMOD20, $ ; Wait for sound to finish playing
+	pop b
+Fedex2:
+	mov a, b
+	mov b, #10
+	div ab
+	push b
+	lcall Play_Sound_Using_Index
+	jb TMOD20, $ ; Wait for sound to finish playing
+	pop b
 	
+	mov a, b
+	lcall Play_Sound_Using_Index
 	jb TMOD20, $ ; Wait for sound to finish playing
 
-    
 	jb tempdisplay_flag, TimerDisplayJmp3
 	jnb tempdisplay_flag, TempDisplayJmp3
 	
@@ -820,19 +854,30 @@ State5_Cool:
     jb MODE_BUTTON, SwitchDisplay_S5
     jnb MODE_BUTTON, $
     
-	mov x, Result
-	lcall hex2bcd2
+	mov a, Result
+	mov b, #100
+	div ab
 	
-	Load_y(10)
-	
-	lcall div32 	
-	mov a, x
-	
+	cjne a, #0, AmazonServices3
+	sjmp Fedex3
+AmazonServices3:
+	push b
 	lcall Play_Sound_Using_Index
+	jb TMOD20, $ ; Wait for sound to finish playing
+	pop b
+Fedex3:
+	mov a, b
+	mov b, #10
+	div ab
+	push b
+	lcall Play_Sound_Using_Index
+	jb TMOD20, $ ; Wait for sound to finish playing
+	pop b
 	
+	mov a, b
+	lcall Play_Sound_Using_Index
 	jb TMOD20, $ ; Wait for sound to finish playing
 
-    
 	jb tempdisplay_flag, TimerDisplayJmp3
 	jnb tempdisplay_flag, TempDisplayJmp3
 	
