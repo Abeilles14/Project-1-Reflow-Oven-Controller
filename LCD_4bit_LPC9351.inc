@@ -274,12 +274,69 @@ TempDisplay:
 
 	Set_Cursor(1,1)
 	Send_Constant_String(#_Temperature_LCD)
-	Set_Cursor(1,6)
-	Display_BCD(currentTemp)
+	;Set_Cursor(1,6)
+	;Display_BCD(currentTemp)
 	Set_Cursor(2,1)
 	Send_Constant_String(#_Power)
 	Set_Cursor(2,8)
-	Display_BCD(Power)
+	Display_BCD(Display_Power)
+
+;----------- DISPLAY TEMP --------------;
+
+;	push acc
+;	lcall Wait_Sec
+;	pop acc
+	
+	clr a
+	mov x+0,Result+0
+	mov x+1,Result+1
+	mov x+2,a
+	mov x+3,a
+	
+;PRINTS RESULT TEMPERATURE IN TOP LEFT	
+	lcall hex2bcd
+	push acc
+	Set_cursor (1,6) ;print to the lcd
+	pop acc
+	lcall LCD_3BCD
+	push acc
+	WriteData(#'C')
+	pop acc
+	
+		
+	clr a
+	mov x+0,LM_TEMP+0
+	mov x+1,LM_TEMP+1
+	mov x+2,a
+	mov x+3,a
+	
+;PRINTS TEMPERATURE FROM LM335 (ROOM TEMP) IN BOTTOM LEFT
+	lcall hex2bcd
+	push acc
+	Set_cursor (1,12) ;print to the lcd
+	pop acc
+	lcall LCD_3BCD
+	push acc
+	WriteData(#'C')
+	pop acc
+	
+		
+	clr a
+	mov x+0,TC_Result+0
+	mov x+1,TC_Result+1
+	mov x+2,a
+	mov x+3,a
+
+	
+;PRINTS THERMOCOUPLE TEMPERATURE ON BOTTOM RIGHT
+;	lcall hex2bcd
+;	push acc
+;	Set_cursor (2,6) ;print to the lcd
+;	pop acc
+;	lcall LCD_3BCD
+;	push acc
+;	WriteData(#'C')
+;	pop acc
 	
 	ljmp Forever
 ;-------------- show timers ---------------;
@@ -291,7 +348,7 @@ TimerDisplay:
 	Set_Cursor(1,2)
 	Send_Constant_String(#_clearLCD)
 
-    	Set_Cursor(1,1)
+    Set_Cursor(1,1)
 	Send_Constant_String(#_Soak)
 	Set_Cursor(1,6)
 	Send_Constant_String(#_C)
@@ -314,42 +371,113 @@ TimerDisplay:
 	
 	ljmp Forever
 
-;------------------------------------;
-;   	Temperature Stuff	         ;
-;------------------------------------;
+	;ret
 
-Display_TempC:
-	Set_Cursor(2, 6)
-	Display_BCD(bcd+0)
-	ret
+TempDisplay2:
+	setb tempdisplay_flag
 	
-	GetTemp:
-	mov x, SaveT
-	mov x+1, SaveT+1
-	mov x+2, #0
-	mov x+3, #0
-	
-	; celcius
-	load_y(410)
-	lcall mul32
-	load_y(1023)
-	lcall div32
-	load_y(273)
-	lcall sub32
+	Set_Cursor(1,1)
+	Send_Constant_String(#_clearLCD)
+	Set_Cursor(2,1)
+	Send_Constant_String(#_clearLCD)
 
+	Set_Cursor(1,1)
+	Send_Constant_String(#_Temperature_LCD)
+	;Set_Cursor(1,6)
+	;Display_BCD(currentTemp)
+	Set_Cursor(2,1)
+	Send_Constant_String(#_Power)
+	Set_Cursor(2,8)
+	Display_BCD(Display_Power)
+
+;----------- DISPLAY TEMP --------------;
+
+;	push acc
+;	lcall Wait_Sec
+;	pop acc
+	
+	clr a
+	mov x+0,Result+0
+	mov x+1,Result+1
+	mov x+2,a
+	mov x+3,a
+	
+;PRINTS RESULT TEMPERATURE IN TOP LEFT	
 	lcall hex2bcd
-	lcall Display_TempC
+	push acc
+	Set_cursor (1,6) ;print to the lcd
+	pop acc
+	lcall LCD_3BCD
+	push acc
+	WriteData(#'C')
+	pop acc
 	
-	mov currentTemp, bcd
-
-	; Check temperature and sound alarm if ...
-	; lcall TempAlarm
-
-SendCelcius:
-	; convert back to celcius, since bcd is in kelvin
-	lcall bcd2hex
-	load_y(273)
-	lcall sub32
+		
+	clr a
+	mov x+0,LM_TEMP+0
+	mov x+1,LM_TEMP+1
+	mov x+2,a
+	mov x+3,a
+	
+;PRINTS TEMPERATURE FROM LM335 (ROOM TEMP) IN BOTTOM LEFT
 	lcall hex2bcd
-	Display_BCD(bcd)
+	push acc
+	Set_cursor (1,12) ;print to the lcd
+	pop acc
+	lcall LCD_3BCD
+	push acc
+	WriteData(#'C')
+	pop acc
+	
+		
+	clr a
+	mov x+0,TC_Result+0
+	mov x+1,TC_Result+1
+	mov x+2,a
+	mov x+3,a
+
+	
+;PRINTS THERMOCOUPLE TEMPERATURE ON BOTTOM RIGHT
+;	lcall hex2bcd
+;	push acc
+;	Set_cursor (2,6) ;print to the lcd
+;	pop acc
+;	lcall LCD_3BCD
+;	push acc
+;	WriteData(#'C')
+;	pop acc
+	
+	ljmp SwitchDisplay_S1
+;-------------- show timers ---------------;
+TimerDisplay2:
+	clr tempdisplay_flag
+
+	Set_Cursor(1,1)
+	Send_Constant_String(#_clearLCD)
+	Set_Cursor(1,2)
+	Send_Constant_String(#_clearLCD)
+
+    Set_Cursor(1,1)
+	Send_Constant_String(#_Soak)
+	Set_Cursor(1,6)
+	Send_Constant_String(#_C)
+	Set_Cursor(1,10)
+	Send_Constant_String(#_blank)
+	Set_Cursor(1,11)
+	Send_Constant_String(#_default)
+	
+	Set_Cursor(2,1)
+	Send_Constant_String(#_Refl)
+	Set_Cursor(2,6)
+	Send_Constant_String(#_C)
+	Set_Cursor(2,10)
+	Send_Constant_String(#_blank)
+	Set_Cursor(2,11)
+	Send_Constant_String(#_default)
+
+	lcall Display_Soak
+	lcall Display_Refl
+	
+	ljmp SwitchDisplay_S1
+
 	;ret

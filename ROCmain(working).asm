@@ -445,7 +445,6 @@ incrementRM:
 
 CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	
-	
 	jb STARTSTOP_BUTTON, jumpercst
     Wait_Milli_seconds(#50)
     jb STARTSTOP_BUTTON, jumpercst
@@ -465,8 +464,7 @@ CheckStartTimer:		; if modestart buttup pressed, start timer and main loop
 	; Change display to ramp soak?
 	;-----------------------------------------------------------;
 	mov goalTemp, SoakTemp		;track current vs goalTemp
-	mov BCD_CounterSec, #0x60
-	setb TR1
+	
 	ljmp State1_RampSoak
 jumpercst:
 	ljmp State0_SetupRefl
@@ -500,17 +498,6 @@ incrementRS:
 State1_RampSoak:
  ; 100% power
 
-	mov a, #0x60
-	clr c
-	subb a, BCD_CounterSec
-	jnc Skip123
-	
-	clr TR1
-	setb POWER
-	ljmp State0_SetupRefl
-	Skip123:
-	
-	
 	lcall ReadTemp
 	clr POWER
 	
