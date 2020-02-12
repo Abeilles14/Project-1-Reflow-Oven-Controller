@@ -239,6 +239,7 @@ Display_Refl:
 	Set_Cursor(2, 14)
 	Display_BCD(ReflSecAlarm)
 	ret
+	
 Display_SoakTimer:
 	Set_Cursor(1, 11)
 	Display_BCD(BCD_counterMin)
