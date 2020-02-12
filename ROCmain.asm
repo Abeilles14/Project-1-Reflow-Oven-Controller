@@ -515,15 +515,25 @@ SwitchDisplay_S1:
 
 ; Compare upper byte
 CompareUpperB_S1:
-	mov a, SoakTemp+1
+	mov bcd+0,SoakTemp+0
+	mov bcd+1,SoakTemp+1
+	mov bcd+2,#0
+	mov bcd+3,#0
+	mov bcd+4,#0
+	
+	lcall bcd2hex
+
+	mov a, x+1 ;SoakTemp+1
 	clr c
-	subb a, Result+1	;Soak-Temp
+	subb a,Result+1	;Soak-Temp
 	jnc CompareLowerB_S1		; if SoakTemp>Result UB, check LB, else end state
 	ljmp End_S1
 CompareLowerB_S1:
-	mov a, SoakTemp+0
+
+	mov a, x+0 ;SoakTemp+0
+	
 	clr c
-	subb a, Result+0
+	subb a,Result+0
 	jnc State1_RampSoak ; if SoakTemp<Result LB, loop, else end state
 ; If Soak Temp reached, proceed
 End_S1:
@@ -541,9 +551,9 @@ End_S1:
 ;       JMP FUNCS      ;
 ;----------------------;
 TempDisplayJmp2:
-	ljmp TempDisplayJmp
+	ljmp TempDisplay2
 TimerDisplayJmp2:
-	ljmp TimerDisplayJmp
+	ljmp TimerDisplay2
 	
 ;------------------------------------;
 ;		 STATE2&4 MAIN LOOP   		 ;
@@ -556,10 +566,40 @@ Forever:
 	; check temperature
 	lcall ReadTemp
 	
+	mov bcd+0,SoakTemp+0
+	mov bcd+1,SoakTemp+1
+	mov bcd+2,#0
+	mov bcd+3,#0
+	mov bcd+4,#0
+	
+	lcall bcd2hex
+	mov a, x+1 ;SoakTemp+1
+	clr c
+	
+	subb a,Result+1	;Soak-Temp
+	jnc CompareLowerSTATE2		
+	ljmp POWER_STATE2;if soak<current temp, enable power
+
+	
+CompareLowerSTATE2:
+	mov a, x+0 ;SoakTemp+0
+	
+	clr c
+	subb a,Result+0
+	jnc POWER_STATE2;if soak<current temp, enable power
+
+	;0% POWER
+    setb POWER ; led off
+    sjmp STATE2POWERSKIP
+    
+POWER_STATE2:
+	;20% POWER
 	clr POWER ; Led on
     Wait_Milli_Seconds(#20)
     setb POWER ; led off
     Wait_Milli_Seconds(#80)
+STATE2POWERSKIP:    
+    
 
 	; Voice Feedback
 	;lcall T2S_FSM		; Run the state machine that plays minutes:seconds
@@ -572,6 +612,7 @@ Forever:
 	jb timer_done, TimerDoneJmp		;check if timer done
 	clr seconds_flag
 	jb tempdisplay_flag, TempDisplayJmp	; if temp mode button pressed, show temp display
+	jnb tempdisplay_flag, TimerDisplayJmp ;ADDED BY WILL?
 	ljmp WriteNum 
 
 	; Do this forever
@@ -648,13 +689,7 @@ TimerDone:		; if timer done
 	;else if refltimer done, finish process
 	mov goalTemp, #0x00		;track current vs goalTemp
 	ljmp State5_Cool		; go to Cool state
-;----------------------;
-;       JMP FUNCS      ;
-;----------------------;
-TempDisplayJmp3:
-	ljmp TempDisplay
-TimerDisplayJmp3:
-	ljmp TimerDisplay
+
 	
 ;--------------------------------;
 ;		STATE3 RAMP REFL 	     ;
@@ -678,22 +713,44 @@ SwitchDisplay_S3:
 	mov Display_Power, #1100100B	;power at 100%
 
 ; Compare upper byte
+	mov bcd+0,ReflTemp+0
+	mov bcd+1,ReflTemp+1
+	mov bcd+2,#0
+	mov bcd+3,#0
+	mov bcd+4,#0
+	
+	lcall bcd2hex
+
+
 CompareUpperB_S3:
-	mov a, ReflTemp+1
+	mov a, x+1
 	clr c
 	subb a, Result+1	;Soak-Temp
 	jnc CompareLowerB_S3		; if SoakTemp>Result UB, check LB, else end state
 	ljmp End_S3
 CompareLowerB_S3:
-	mov a, ReflTemp+0
+	mov a, x+0
 	clr c
 	subb a, Result+0
 	jnc State3_RampRefl ; if SoakTemp<Result LB, loop, else end state
 ; If Soak Temp reached, proceed
+;----------------------;
+;       JMP FUNCS      ;
+;----------------------;
+TempDisplayJmp3:
+	ljmp TempDisplay
+TimerDisplayJmp3:
+	ljmp TimerDisplay
+
 ;---------------------------;
 ;		STATE4 REFL 	    ;
 ;---------------------------; 
 End_S3:
+
+	
+	
+	Set_Cursor(1,8)
+	Send_Constant_String(#_Soak)
 	clr timer_done
 	setb refltimer_done		; set to indicate final stage in process
 	mov BCD_counterMin, ReflMinAlarm	; move time settings into counters
