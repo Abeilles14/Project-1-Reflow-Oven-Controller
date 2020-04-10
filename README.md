@@ -65,7 +65,7 @@ The approximate reflow settings used in the final demo can be observed in this t
 
 ### Software Block Diagram
 
-<img src="images/software_block.jpg" width="900"/>
+<img src="images/software_block.jpg" width="700"/>
 
 *Controller Logic*
 
