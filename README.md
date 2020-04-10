@@ -19,7 +19,7 @@ This project consisted in designing and programming a reflow oven controller tha
 Reflow soldering is a common soldering technique used to assemble surface mount devices onto the PCB's pads coated with solder paste.
 A heating process with mutliple stages of different temperature range melts the paste, thus linking the components. The designed reflow oven controller sets and executes the settings of a complete reflow process consisting of 6 states numbers 0 to 5 using a finite state machine. Folowing these states, the oven had to maintain set soak and reflow temperatures for specific time periods for each cycle of the reflow process. The controller varies the amount of power delivered to the oven via an SSR box through pulse width modulation (PWM). Temperature is read by inserting one end of a k-type thermocouple with cold junction compensation into the oven during the reflow process. The temperature is annouced every 5 seconds by speaker voice feedback as well as any state changes. As a safety feature, if the temperature read by the thermocouple did not rise to at least 60 degrees within the first 60 seconds of operation upon starting the process, the controller terminates the process.
 
-<img src="images/board.jpg" width="700"/>
+<img src="images/board.jpg" width="600"/>
 
 *Completed Reflow Over Controller Circuit Board*
 
@@ -27,7 +27,7 @@ A heating process with mutliple stages of different temperature range melts the 
 
 The finite state machine implemented consists of 6 states.
 
-<img src="images/reflow_states.PNG" width="500"/>
+<img src="images/reflow_states.PNG" width="400"/>
 
 *Reflow States*
 
@@ -65,7 +65,7 @@ The approximate reflow settings used in the final demo can be observed in this t
 
 ### Software Block Diagram
 
-<img src="images/software_block.jpg" width="700"/>
+<img src="images/software_block.jpg" width="600"/>
 
 *Controller Logic*
 
@@ -75,7 +75,7 @@ The approximate reflow settings used in the final demo can be observed in this t
 
 To collect temperature data, an LM355 is connected to the onboard Analog to Digital Converter (ADC), to return the temperature of the cold junction of the thermocouple. The thermocouple measures a difference in temperature between the tip and the cold junction, therefore the cold junction and thermocouple temperatures are added to calculate the total temperature. The thermocouple voltage is first amplified by an inverting OP07 OpAmp. Once the voltage is read from the thermocouple, it is sent to a computer via the USB serial interface where a python script converts the voltage into a temperature in Celsius.
 
-<img src="images/thermocouple.PNG" width="500"/>
+<img src="images/thermocouple.PNG" width="400"/>
 
 *Cold Junction Thermocouple*
 
