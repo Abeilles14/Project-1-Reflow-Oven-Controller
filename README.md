@@ -59,7 +59,7 @@ At State 5, the oven is allowed to cool until the temperature reaches 60 degrees
 
 The approximate reflow settings used in the final demo can be observed in this table.
 
-<img src="images/reflow_settings" width="500"/>
+<img src="images/reflow_settings.PNG" width="500"/>
 
 *Reflow Settings Temperature and Time*
 
@@ -73,10 +73,42 @@ The approximate reflow settings used in the final demo can be observed in this t
 
 ### Thermocouple
 
+To collect temperature data, an LM355 is connected to the onboard Analog to Digital Converter (ADC), to return the temperature of the cold junction of the thermocouple. The thermocouple measures a difference in temperature between the tip and the cold junction, therefore the cold junction and thermocouple temperatures are added to calculate the total temperature. The thermocouple voltage is first amplified by an inverting OP07 OpAmp. Once the voltage is read from the thermocouple, it is sent to a computer via the USB serial interface where a python script converts the voltage into a temperature in Celsius.
+
+<img src="images/thermocouple.PNG" width="500"/>
+
+*Cold Junction Thermocouple*
+
 ### Power and Pulse Width Modulation (PWM)
+
+The controller regulates the amount of power delivered to the oven using a technique called pulse width modulation (PWM). PWM is used to create an analog signal from a digital signal by changing the duty cycle of a constant frequency pulse waveform. The thermocouple temperature is continuously compared to the goal temperature. If the measured temperature is less than that of the goal temperature, the power turns on, while if the temperature exceed it, the power turns off. During the ramp to soak and ramp to reflow stages of the reflow process, the power delivered is at approximately 100% as the temperature rises. During the soak and reflow stages, the power delivered is at approximately 20% as the temperature is kept constant.
 
 ### Voce Feedback
 
+Voice feedback from a speaker provided the oven temperature every 5 seconds with an audible readout. Sound files that stored the audio for numbers and stages of the reflow process generated. To store the audio files, a 25Q32JVAIQ flash storage chip is connected via  the Serial Peripheral Interface (SPI) to the P89 microcontroller. The speaker is first connectedto a LM386N-1 mono audio amplifier, then to the DAC on the P89 microcontroller. 
+
 ### User Interface
 
+The user interface includes 5 push buttons and an LCD screen to display the settings. At State 0, the buttons for Temperature, Seconds, and Minutes are checked in a loop continuously to see if they are pressed. When pressed, they increment their individual BCD counters. After the soak settings are set, the Start button is pressed to flag the start of reflow settings. The reflow settings are set in a similar way, and once again the start button is pressed to proceed to State 1. Once in State 1, the Temperature Settings button now becomes the Mode button. The Mode button can be used to navigate through the reflow and soak timers and temperature, as well as display the current temperature of the termocouple and room temperature.
+
 ## Testing and Printed Circuit Board
+
+Once all components assembled, the reflow process was tested with the settings set for soak at 150 degrees for 60 seconds and reflow at 220 degrees for 45 seconds. The thermocople temperature to time was observed during the process to plot a similar curve to that of the state graph, distinctly showing the different states of the reflow process.
+
+<img src="images/reflow_plot.PNG" width="400"/>
+
+*Live Temperature vs Time Plot of Reflow Process*
+
+When placing a piece of paper in the oven, the test yielded in the paper showing lightly brown roasted as shown in the far left.
+
+<img src="images/paper_test.PNG" width="400"/>
+
+*Oven Paper Test*
+
+Finally, solder paste was applied using a stencil to the EFM8 microcontroller PCB and components were placed on the solder pads before beginning the reflow process once more. The process successfully soldered all electrical components onto the board creating a fully functional EFM8 microcontroller to be used in future projects.
+
+<img src="images/microcontroller.jpg" width="500"/>
+
+*Successfully Soldered EFM8 Microcontroller*
+
+
